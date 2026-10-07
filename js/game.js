@@ -10,8 +10,15 @@
   const buttonLabel = document.querySelector("#button-label");
   const distanceLabel = document.querySelector("#distance");
   const speedLabel = document.querySelector("#speed");
+  const fuelLabel = document.querySelector("#fuel");
+  const motorSummary = document.querySelector("#motor-summary");
+  const motorReadout = document.querySelector("#motor-readout");
   const statusLabel = document.querySelector("#status");
   const statusDot = document.querySelector("#status-dot");
+  const mapProgressLabel = document.querySelector("#map-progress");
+  const upstreamRoute = document.querySelector("#upstream-course");
+  const downstreamRoute = document.querySelector("#downstream-course");
+  const mapBoat = document.querySelector("#map-boat");
   const soundToggle = document.querySelector("#sound-toggle");
   const volumeSlider = document.querySelector("#volume");
   const riverMessage = document.querySelector("#river-message");
@@ -20,7 +27,46 @@
   const keys = new Set();
   const heldControls = new Set();
   const boatY = height * 0.69;
-  const boatWidth = 38;
+  const sceneMapScale = 1.8;
+  const scenePixelsPerMeter = 1.5;
+  const boatScale = 0.06;
+  const boatLengthMeters = 6;
+  const boatWidthMeters = 1.2;
+  const boatWidth = boatWidthMeters * scenePixelsPerMeter;
+  const routeLength = 18000;
+  const startStation = routeLength / 2;
+  // Keep this specification aligned with motor.txt, which cannot be fetched as data from file:// pages.
+  const motor = Object.freeze({
+    type: "2 tempos",
+    powerHp: 5,
+    speedLevels: 5,
+    minimumRpm: 800,
+    maximumRpm: 9000,
+    noiseLevelsDb: [65, 75, 85, 95, 105],
+    maximumEngineAudioGain: 0.012,
+    upstreamMaxSpeedKmh: 18,
+    downstreamMaxSpeedKmh: 27,
+    upstreamLitersPerLeg: 8,
+    downstreamLitersPerLeg: 4,
+    legLengthMeters: 9000,
+    tankCapacityLiters: 10,
+    startingFuelLiters: 3
+  });
+  const powerScale = motor.powerHp / 5;
+  const maxForwardSpeed = motor.downstreamMaxSpeedKmh * powerScale;
+  const maxReverseSpeed = motor.upstreamMaxSpeedKmh * powerScale;
+  const acceleration = 6 * powerScale;
+  const throttleStep = 3 * powerScale;
+  const capsizeSpeed = 10 * powerScale;
+  const fuelCapacity = motor.tankCapacityLiters;
+  const obstacleSpacingMeters = 450;
+  const upstreamRouteLength = upstreamRoute.getTotalLength();
+  const downstreamRouteLength = downstreamRoute.getTotalLength();
+  const routeSampleStep = 10;
+  const routeSamples = Array.from({ length: routeLength / routeSampleStep + 1 }, (_, index) => (
+    routePointFromMap(index * routeSampleStep)
+  ));
+  let sceneCamera = null;
   const treeModels = [
     { name: "figueira", shape: "broad", clusters: 12 },
     { name: "farinha-seca", shape: "oval", clusters: 9 },
@@ -35,30 +81,75 @@
   ];
 
   let state = "ready";
-  let boatX = width / 2;
-  let scrollY = 0;
+  let boatX = 0;
   let speed = 0;
+  let boatHeading = 0;
   let distance = 0;
+  let fuel = motor.startingFuelLiters;
   let lastTime = 0;
   let messageTimer = 0;
   let impactCooldown = 0;
-  let lastStatus = "";
+  let turnRisk = 0;
+  let turnWarningShown = false;
+  let capsized = false;
   let obstacles = [];
 
   const audio = createSoundscape();
 
-  function riverCenter(worldY) {
-    return width / 2
-      + Math.sin(worldY / 410) * 120
-      + Math.sin(worldY / 175 + 0.8) * 32
-      + Math.sin(worldY / 1030 + 1.6) * 27;
+  function routePointFromMap(station) {
+    const boundedStation = Math.max(0, Math.min(routeLength, station));
+    if (boundedStation <= startStation) {
+      const progress = boundedStation / startStation;
+      return upstreamRoute.getPointAtLength(upstreamRouteLength * progress);
+    }
+    const progress = (boundedStation - startStation) / startStation;
+    return downstreamRoute.getPointAtLength(downstreamRouteLength * progress);
   }
 
-  function riverHalfWidth(worldY) {
-    const bend = Math.sin(worldY / 590 + 0.7) * 16 + Math.sin(worldY / 235) * 8;
-    const narrowPhase = ((worldY % 3380) + 3380) % 3380;
-    const narrow = narrowPhase > 2050 && narrowPhase < 2500 ? 78 : 0;
-    return 288 + bend - narrow;
+  function routePointAtStation(station) {
+    const boundedStation = Math.max(0, Math.min(routeLength, station));
+    const position = boundedStation / routeSampleStep;
+    const index = Math.floor(position);
+    const fraction = position - index;
+    const point = routeSamples[index];
+    const next = routeSamples[Math.min(index + 1, routeSamples.length - 1)];
+    return {
+      x: point.x + (next.x - point.x) * fraction,
+      y: point.y + (next.y - point.y) * fraction
+    };
+  }
+
+  function routeTangentAtStation(station) {
+    const offset = routeSampleStep;
+    const before = station < startStation
+      ? routePointAtStation(Math.max(0, station - offset))
+      : routePointAtStation(station);
+    const after = station < startStation
+      ? routePointAtStation(station)
+      : routePointAtStation(Math.min(routeLength, station + offset));
+    const length = Math.hypot(after.x - before.x, after.y - before.y) || 1;
+    return { x: (after.x - before.x) / length, y: (after.y - before.y) / length };
+  }
+
+  function scenePointAtStation(station, lateralOffset = 0) {
+    const point = routePointAtStation(station);
+    const tangent = routeTangentAtStation(station);
+    const cameraPoint = sceneCamera ? sceneCamera.point : routePointAtStation(startStation + distance);
+    const normalX = tangent.y;
+    const normalY = -tangent.x;
+    return {
+      x: width / 2 + (point.x - cameraPoint.x) * sceneMapScale + normalX * lateralOffset,
+      y: boatY + (point.y - cameraPoint.y) * sceneMapScale + normalY * lateralOffset,
+      tangentX: tangent.x,
+      tangentY: tangent.y,
+      rightX: normalX,
+      rightY: normalY
+    };
+  }
+
+  function riverHalfWidth(station) {
+    const widthMeters = 60 + 30 * Math.sin(station / 1800 + 0.7);
+    return widthMeters * scenePixelsPerMeter / 2;
   }
 
   function seededNoise(value) {
@@ -67,52 +158,87 @@
   }
 
   function obstacleAt(index) {
-    const worldY = index * 390 + 620 + seededNoise(index * 2.41 + 5) * 140;
-    const halfWidth = riverHalfWidth(worldY);
-    const offset = (seededNoise(worldY * 0.23) * 2 - 1) * (halfWidth - 48);
-    const type = seededNoise(worldY * 0.41) > 0.55 ? "branch" : "rock";
+    const station = index * obstacleSpacingMeters + 108 + seededNoise(index * 2.41 + 5) * 108;
+    const halfWidth = riverHalfWidth(station);
+    const lateralOffset = (seededNoise(station * 0.23) * 2 - 1) * Math.max(0, halfWidth - 18);
+    const type = seededNoise(station * 0.41) > 0.55 ? "branch" : "rock";
     return {
-      y: worldY,
-      x: riverCenter(worldY) + offset,
+      station,
+      lateralOffset,
       type,
-      radius: type === "rock" ? 15 + seededNoise(worldY) * 9 : 17 + seededNoise(worldY * 0.7) * 8
+      radius: (type === "rock" ? 1.5 : 1.8) * scenePixelsPerMeter
     };
   }
 
   function updateObstacles() {
-    const firstIndex = Math.floor((scrollY - 160 - 760) / 390);
-    const lastIndex = Math.ceil((scrollY + height + 160 - 620) / 390);
+    const station = startStation + distance;
+    const firstIndex = Math.floor((station - 1900) / obstacleSpacingMeters);
+    const lastIndex = Math.ceil((station + 1900) / obstacleSpacingMeters);
     obstacles = [];
     for (let index = firstIndex; index <= lastIndex; index++) {
       const obstacle = obstacleAt(index);
-      if (obstacle.y >= scrollY - 160 && obstacle.y <= scrollY + height + 160) {
+      if (obstacle.station >= 0 && obstacle.station <= routeLength) {
         obstacles.push(obstacle);
       }
     }
   }
 
   function resetGame() {
-    boatX = width / 2;
-    scrollY = 0;
-    speed = 0;
+    boatX = 0;
     distance = 0;
+    speed = 0;
+    boatHeading = 0;
+    fuel = motor.startingFuelLiters;
     impactCooldown = 0;
+    turnRisk = 0;
+    turnWarningShown = false;
+    capsized = false;
+    overlayTitle.innerHTML = "A correnteza<br>está chamando.";
+    overlayCopy.textContent = `O início fica no meio do trajeto. Desça o rio para chegar ao ponto 2; use a ré para subir até o ponto 1. Cada trecho tem 9 km: na velocidade máxima, são 18 km/h rio acima (30 min) e 27 km/h rio abaixo (20 min). A canoa mede 6 m de comprimento por 1,2 m de largura e leva quatro pescadores: um pilota no motor de popa ${motor.powerHp} HP (${motor.type}) e os outros três ocupam os demais bancos. O tanque comporta ${fuelCapacity} L e começa com ${motor.startingFuelLiters} L.`;
+    buttonLabel.textContent = "COMEÇAR O PASSEIO";
     updateObstacles();
     updateHud();
   }
 
   function updateHud() {
-    distanceLabel.textContent = `${Math.floor(distance).toLocaleString("pt-BR")} m`;
-    const speedInKmh = Math.round(Math.abs(speed) * 0.12);
+    const station = startStation + distance;
+    const stationKm = (station / 1000).toFixed(1).replace(".", ",");
+    distanceLabel.textContent = `km ${stationKm}`;
+    const mapDirection = station === startStation ? "INÍCIO"
+      : station < startStation ? "RIO ACIMA" : "RIO ABAIXO";
+    mapProgressLabel.textContent = `${stationKm} KM · ${mapDirection}`;
+    const speedInKmh = Math.round(Math.abs(speed));
     speedLabel.textContent = speed < 0 ? `Ré ${speedInKmh} km/h` : `${speedInKmh} km/h`;
-    const narrowPhase = ((scrollY + boatY) % 3380 + 3380) % 3380;
-    const status = narrowPhase > 1870 && narrowPhase < 2580 ? "Passagem estreita" : "Rio Mogi";
-    statusLabel.textContent = status === "Passagem estreita" ? "Passagem estreita" : "Rio Mogi";
-    statusDot.classList.toggle("narrow", status === "Passagem estreita");
-    if (status !== lastStatus && state === "playing" && status === "Passagem estreita") {
-      showMessage("Passagem estreita — atenção às pedras!");
-    }
-    lastStatus = status;
+    fuelLabel.textContent = `${fuel.toFixed(2).replace(".", ",")} / ${fuelCapacity} L`;
+    fuelLabel.classList.toggle("low-fuel", fuel <= fuelCapacity * 0.2);
+    const engine = getEngineTelemetry();
+    motorSummary.textContent = `${motor.powerHp} HP · ${motor.type === "2 tempos" ? "2T" : motor.type}`;
+    motorReadout.textContent = engine.rpm === 0
+      ? "MOTOR DESLIGADO"
+      : `NÍVEL ${engine.level} · ${engine.rpm} RPM · ${engine.noiseDb} dB`;
+    const status = station <= 0 ? "Ponto 1"
+      : station >= routeLength ? "Ponto 2"
+        : Math.abs(station - startStation) < 1 ? "Início do trajeto"
+          : station < startStation ? "Rio acima" : "Rio abaixo";
+    statusLabel.textContent = status;
+    statusDot.classList.toggle("narrow", status === "Ponto 1" || status === "Ponto 2");
+    updateRouteMap();
+  }
+
+  function getEngineTelemetry() {
+    if (fuel <= 0) return { rpm: 0, level: 0, noiseDb: 0 };
+    const speedLimit = speed < 0 ? maxReverseSpeed : maxForwardSpeed;
+    const speedRatio = Math.min(1, Math.abs(speed) / speedLimit);
+    const rpm = Math.round(motor.minimumRpm + speedRatio * (motor.maximumRpm - motor.minimumRpm));
+    const level = Math.min(motor.speedLevels, Math.max(1, Math.ceil(speedRatio * motor.speedLevels)));
+    return { rpm, level, noiseDb: motor.noiseLevelsDb[level - 1] };
+  }
+
+  function updateRouteMap() {
+    if (!mapBoat) return;
+    const station = Math.max(0, Math.min(routeLength, startStation + distance));
+    const location = routePointAtStation(station);
+    mapBoat.setAttribute("transform", `translate(${location.x} ${location.y})`);
   }
 
   function showMessage(text) {
@@ -129,6 +255,7 @@
       lastTime = performance.now();
       updateHud();
       audio.play();
+      audio.setEngineState(getEngineTelemetry());
       return;
     }
     resetGame();
@@ -137,6 +264,7 @@
     lastTime = performance.now();
     updateHud();
     audio.play();
+    audio.setEngineState(getEngineTelemetry());
     showMessage("Passeio iniciado. Bom rio!");
   }
 
@@ -155,29 +283,95 @@
     }
   }
 
+  function endGame() {
+    state = "gameover";
+    capsized = true;
+    keys.clear();
+    heldControls.clear();
+    overlayTitle.innerHTML = "A canoa virou<br>na curva.";
+    overlayCopy.textContent = "Curvas fechadas em alta velocidade podem virar a canoa. Reduza antes de manobrar e tente novamente.";
+    buttonLabel.textContent = "TENTAR NOVAMENTE";
+    overlay.hidden = false;
+    audio.pause();
+    updateHud();
+  }
+
   function update(delta) {
     const turnLeft = keys.has("ArrowLeft") || keys.has("a") || keys.has("A") || heldControls.has("left");
     const turnRight = keys.has("ArrowRight") || keys.has("d") || keys.has("D") || heldControls.has("right");
     const accelerate = keys.has("ArrowUp") || keys.has("w") || keys.has("W") || heldControls.has("faster");
     const slowDown = keys.has("ArrowDown") || keys.has("s") || keys.has("S") || heldControls.has("slower");
+    const turnInput = (turnRight ? 1 : 0) - (turnLeft ? 1 : 0);
 
-    if (accelerate !== slowDown) {
-      speed = Math.max(-100, Math.min(185, speed + (accelerate ? 48 : -48) * delta));
+    if (fuel > 0 && accelerate !== slowDown) {
+      speed = Math.max(-maxReverseSpeed, Math.min(maxForwardSpeed, speed + (accelerate ? acceleration : -acceleration) * delta));
+    } else if (fuel <= 0) {
+      speed = 0;
     }
 
-    const steering = ((turnRight ? 1 : 0) - (turnLeft ? 1 : 0)) * Math.sign(speed);
-    boatX += steering * (230 + Math.abs(speed) * 0.22) * delta;
-    scrollY += speed * delta;
-    distance += Math.abs(speed) * delta * 0.12;
+    const steering = turnInput * Math.sign(speed);
+    const turnRate = steering * (0.85 + Math.abs(speed) / maxForwardSpeed * 0.55);
+    boatHeading = Math.max(-0.65, Math.min(0.65, boatHeading + turnRate * delta));
+    if (!turnInput) boatHeading *= Math.max(0, 1 - delta * 1.8);
+    boatX += steering * Math.abs(speed) * 0.35 * delta;
+    const previousDistance = distance;
+    const previousStation = startStation + previousDistance;
+    const stepMeters = speed * delta / 3.6;
+    const travelDirection = Math.sign(stepMeters);
+    let nextStation = previousStation + stepMeters;
+    if (nextStation < 0 || nextStation > routeLength) {
+      const upstreamLimit = nextStation < 0;
+      nextStation = upstreamLimit ? 0 : routeLength;
+      distance = nextStation - startStation;
+      speed = 0;
+      if (impactCooldown === 0) {
+        impactCooldown = 1;
+        showMessage(upstreamLimit
+          ? "Ponto 1: limite rio acima. A partir daqui, só se desce."
+          : "Ponto 2: limite rio abaixo. Para voltar, suba o rio em ré.");
+      }
+    } else {
+      distance = nextStation - startStation;
+    }
+    const traveledMeters = Math.abs(nextStation - previousStation);
+    if (traveledMeters > 0) {
+      const consumptionPerMeter = travelDirection < 0
+        ? motor.upstreamLitersPerLeg / motor.legLengthMeters
+        : motor.downstreamLitersPerLeg / motor.legLengthMeters;
+      fuel = Math.max(0, fuel - traveledMeters * consumptionPerMeter);
+      if (fuel === 0) {
+        speed = 0;
+        showMessage("Sem gasolina. A canoa parou.");
+      }
+    }
+    if (previousStation < startStation && nextStation >= startStation) {
+      showMessage("Início do trajeto — agora rio abaixo, rumo ao ponto 2.");
+    } else if (previousStation > startStation && nextStation <= startStation) {
+      showMessage("Início do trajeto — agora rio acima, rumo ao ponto 1.");
+    }
     impactCooldown = Math.max(0, impactCooldown - delta);
 
-    const worldBoatY = scrollY + boatY;
+    if (Math.abs(speed) >= capsizeSpeed && Math.abs(turnRate) >= 1.1) {
+      turnRisk += delta;
+      if (turnRisk >= 0.2 && !turnWarningShown) {
+        turnWarningShown = true;
+        showMessage("Curva fechada em alta velocidade! Reduza agora.");
+      }
+      if (turnRisk >= 0.55) {
+        endGame();
+        return;
+      }
+    } else {
+      turnRisk = Math.max(0, turnRisk - delta * 1.8);
+      if (turnRisk === 0) turnWarningShown = false;
+    }
+
     updateObstacles();
 
-    const edge = riverHalfWidth(worldBoatY);
-    const center = riverCenter(worldBoatY);
-    if (boatX < center - edge + 25 || boatX > center + edge - 25) {
-      boatX += (center - boatX) * Math.min(1, delta * 1.9);
+    const edge = riverHalfWidth(nextStation);
+    const maximumLateralOffset = Math.max(0, edge - boatWidth / 2);
+    if (Math.abs(boatX) > maximumLateralOffset) {
+      boatX = Math.sign(boatX) * maximumLateralOffset;
       speed *= Math.max(0, 1 - 1.2 * delta);
       if (impactCooldown === 0) {
         impactCooldown = 1.15;
@@ -186,18 +380,18 @@
     }
 
     for (const obstacle of obstacles) {
-      if (Math.abs(obstacle.y - worldBoatY) < obstacle.radius + 24
-          && Math.abs(obstacle.x - boatX) < obstacle.radius + boatWidth * 0.43
+      if (Math.abs(obstacle.station - nextStation) < boatLengthMeters / 2 + obstacle.radius / scenePixelsPerMeter
+          && Math.abs(obstacle.lateralOffset - boatX) < obstacle.radius + boatWidth / 2
           && impactCooldown === 0) {
         impactCooldown = 1.15;
         speed *= 0.45;
-        boatX += boatX < obstacle.x ? -21 : 21;
+        boatX += boatX < obstacle.lateralOffset ? -21 : 21;
         showMessage("Opa! Desvie da pedra ou do galho.");
         break;
       }
     }
 
-    audio.setThrottle(Math.abs(speed) / 185);
+    audio.setEngineState(getEngineTelemetry());
     updateHud();
   }
 
@@ -205,48 +399,43 @@
     if (state !== "playing") return;
     const forward = key === "ArrowUp" || key === "w" || key === "W";
     const reverse = key === "ArrowDown" || key === "s" || key === "S";
-    if (forward) speed = Math.min(185, speed + 8);
-    else if (reverse) speed = Math.max(-100, speed - 8);
+    if (fuel <= 0) {
+      showMessage("Sem gasolina. A canoa precisa reabastecer.");
+      return;
+    }
+    if (forward) speed = Math.min(maxForwardSpeed, speed + throttleStep);
+    else if (reverse) speed = Math.max(-maxReverseSpeed, speed - throttleStep);
     updateHud();
   }
 
   function drawBank() {
-    ctx.fillStyle = "#183c2d";
+    ctx.fillStyle = "#102d26";
     ctx.fillRect(0, 0, width, height);
 
-    for (let y = -18; y < height + 36; y += 11) {
-      const worldY = scrollY + y;
-      const center = riverCenter(worldY);
-      const edge = riverHalfWidth(worldY);
-      if (y === -18) {
-        ctx.beginPath();
-        ctx.moveTo(center - edge, y);
-      } else {
-        ctx.lineTo(center - edge, y);
-      }
-    }
-    for (let y = height + 36; y >= -18; y -= 11) {
-      const worldY = scrollY + y;
-      ctx.lineTo(riverCenter(worldY) + riverHalfWidth(worldY), y);
-    }
-    ctx.closePath();
-    ctx.fillStyle = "#234b36";
-    ctx.fill();
-
-    for (let y = -65; y < height + 75; y += 32) {
-      const worldY = scrollY + y;
-      const center = riverCenter(worldY);
-      const edge = riverHalfWidth(worldY);
+    const currentStation = startStation + distance;
+    const firstStation = Math.max(0, currentStation - 1900);
+    const lastStation = Math.min(routeLength, currentStation + 1900);
+    for (let station = firstStation; station <= lastStation; station += 80) {
+      const center = scenePointAtStation(station);
+      const edge = riverHalfWidth(station);
       for (const side of [-1, 1]) {
-        const row = Math.floor(worldY / 32);
         for (let band = 0; band < 5; band++) {
-          const seed = row * 19 + side * 7 + band * 31 + 80;
+          const seed = Math.floor(station / 80) * 19 + side * 7 + band * 31 + 80;
           const variation = seededNoise(seed);
-          const bankDepth = 20 + band * 43 + seededNoise(seed + 4) * 20;
-          const x = center + side * (edge + bankDepth);
+          const bankDepth = 22 + band * 43 + seededNoise(seed + 4) * 19;
+          const x = center.x + center.rightX * side * (edge + bankDepth);
+          const y = center.y + center.rightY * side * (edge + bankDepth);
           const species = Math.floor(seededNoise(seed + 11) * treeModels.length);
           const size = 18 + seededNoise(seed + 17) * 18;
-          drawTree(x, y + (seededNoise(seed + 2) - 0.5) * 25, size, species, seed, variation);
+          const jitter = (seededNoise(seed + 2) - 0.5) * 25;
+          drawTree(
+            x + center.tangentX * jitter,
+            y + center.tangentY * jitter,
+            size,
+            species,
+            seed,
+            variation
+          );
         }
       }
     }
@@ -256,10 +445,10 @@
     if (x < -radius * 2 || x > width + radius * 2) return;
     const model = treeModels[species];
     const palette = variation > 0.78
-      ? ["#183c2d", "#24583a", "#347347", "#5f8a4b"]
+      ? ["#102f2a", "#194439", "#275a42", "#44644b"]
       : variation > 0.48
-        ? ["#14392b", "#20563a", "#307044", "#4b7f43"]
-        : ["#123528", "#1d4d35", "#2a663e", "#477943"];
+        ? ["#0c2a26", "#143c33", "#1f503b", "#3d5d48"]
+        : ["#0a2522", "#11372f", "#1a4837", "#355542"];
     const rotation = seededNoise(seed + 29) * Math.PI * 2;
     const lobes = 8 + Math.floor(seededNoise(seed + 23) * 5);
 
@@ -399,81 +588,86 @@
   }
 
   function drawWater() {
-    const top = scrollY;
-    ctx.beginPath();
-    for (let y = -8; y <= height + 8; y += 8) {
-      const center = riverCenter(top + y);
-      const edge = riverHalfWidth(top + y);
-      if (y === -8) ctx.moveTo(center - edge, y);
-      else ctx.lineTo(center - edge, y);
-    }
-    for (let y = height + 8; y >= -8; y -= 8) {
-      ctx.lineTo(riverCenter(top + y) + riverHalfWidth(top + y), y);
-    }
-    ctx.closePath();
+    const currentStation = startStation + distance;
+    const firstStation = Math.max(0, currentStation - 1900);
+    const lastStation = Math.min(routeLength, currentStation + 1900);
+    const step = 18;
     const water = ctx.createLinearGradient(0, 0, width, height);
-    water.addColorStop(0, "#366e68");
-    water.addColorStop(0.48, "#2d6865");
-    water.addColorStop(1, "#285b5b");
-    ctx.fillStyle = water;
-    ctx.fill();
-
-    ctx.save();
-    ctx.clip();
-    for (let y = -15; y < height + 24; y += 23) {
-      const worldY = scrollY + y;
-      for (let i = 0; i < 8; i++) {
-        const noise = seededNoise(Math.floor(worldY / 23) * 15 + i);
-        const x = riverCenter(worldY) + (noise * 2 - 1) * riverHalfWidth(worldY) * 0.82;
-        const drift = ((scrollY * 0.23 + i * 13) % 20);
-        ctx.strokeStyle = `rgba(194, 217, 181, ${0.07 + noise * 0.13})`;
+    water.addColorStop(0, "#414c48");
+    water.addColorStop(0.48, "#394440");
+    water.addColorStop(1, "#303b38");
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = water;
+    for (let station = firstStation; station < lastStation; station += step) {
+      const center = scenePointAtStation(station);
+      const nextStation = Math.min(lastStation, station + step);
+      const next = scenePointAtStation(nextStation);
+      ctx.lineWidth = riverHalfWidth(station) + riverHalfWidth(nextStation);
+      ctx.beginPath();
+      ctx.moveTo(center.x, center.y);
+      ctx.lineTo(next.x, next.y);
+      ctx.stroke();
+    }
+    for (let station = firstStation; station <= lastStation; station += 36) {
+      const center = scenePointAtStation(station);
+      for (let index = 0; index < 3; index++) {
+        const seed = Math.floor(station / 36) * 13 + index;
+        const noise = seededNoise(seed + currentStation);
+        const offset = (noise * 2 - 1) * riverHalfWidth(station) * 0.75;
+        const x = center.x + center.rightX * offset;
+        const y = center.y + center.rightY * offset;
+        ctx.strokeStyle = `rgba(188, 195, 179, ${0.06 + noise * 0.12})`;
         ctx.lineWidth = 1 + noise * 1.3;
         ctx.beginPath();
-        ctx.moveTo(x, y + drift);
-        ctx.quadraticCurveTo(x + 8, y + drift - 1, x + 17, y + drift + 1);
+        ctx.moveTo(x - center.tangentX * 8, y - center.tangentY * 8);
+        ctx.quadraticCurveTo(x, y, x + center.tangentX * 8, y + center.tangentY * 8);
         ctx.stroke();
       }
     }
-    ctx.restore();
 
     ctx.lineWidth = 3;
-    ctx.strokeStyle = "#a4b58a";
+    ctx.strokeStyle = "#788477";
     for (const side of [-1, 1]) {
       ctx.beginPath();
-      for (let y = -8; y <= height + 8; y += 9) {
-        const shore = riverCenter(scrollY + y) + side * riverHalfWidth(scrollY + y);
-        if (y === -8) ctx.moveTo(shore, y);
-        else ctx.lineTo(shore, y);
+      for (let station = firstStation; station <= lastStation; station += step) {
+        const center = scenePointAtStation(station);
+        const edge = side * riverHalfWidth(station);
+        const x = center.x + center.rightX * edge;
+        const y = center.y + center.rightY * edge;
+        if (station === firstStation) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
   }
 
   function drawBeaches() {
-    for (let y = -10; y < height + 20; y += 6) {
-      const worldY = scrollY + y;
-      const center = riverCenter(worldY);
-      const edge = riverHalfWidth(worldY);
-      const patchPhase = ((worldY % 1800) + 1800) % 1800;
-      if (patchPhase > 700 && patchPhase < 880) {
-        const side = Math.floor(worldY / 1800) % 2 === 0 ? -1 : 1;
-        const t = (patchPhase - 700) / 180;
-        const beachLength = Math.sin(t * Math.PI) * 58;
-        const shore = center + side * (edge - 3);
-        ctx.fillStyle = "#c5b98b";
-        ctx.beginPath();
-        ctx.moveTo(shore, y - beachLength * 0.38);
-        ctx.quadraticCurveTo(shore + side * beachLength * 0.7, y, shore, y + beachLength * 0.38);
-        ctx.closePath();
-        ctx.fill();
-      }
+    const currentStation = startStation + distance;
+    const firstStation = Math.max(0, currentStation - 1800);
+    const lastStation = Math.min(routeLength, currentStation + 1800);
+    for (let station = 900 + Math.ceil((firstStation - 900) / 1800) * 1800;
+      station <= lastStation;
+      station += 1800) {
+      const side = Math.floor(station / 1800) % 2 === 0 ? -1 : 1;
+      const center = scenePointAtStation(station, side * (riverHalfWidth(station) - 2));
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.rotate(Math.atan2(center.tangentY, center.tangentX));
+      ctx.fillStyle = "#c5b98b";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 54, 24, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
   function drawObstacle(obstacle) {
-    const screenY = obstacle.y - scrollY;
-    if (screenY < -35 || screenY > height + 35) return;
-    const x = obstacle.x;
+    const position = scenePointAtStation(obstacle.station, obstacle.lateralOffset);
+    if (position.x < -35 || position.x > width + 35
+        || position.y < -35 || position.y > height + 35) return;
+    const x = position.x;
+    const screenY = position.y;
     if (obstacle.type === "rock") {
       ctx.fillStyle = "#1c3c3c77";
       ctx.beginPath();
@@ -505,52 +699,127 @@
   }
 
   function drawBoat() {
+    const station = startStation + distance;
+    const position = scenePointAtStation(station, boatX);
+    const tangent = routeTangentAtStation(station);
     ctx.save();
-    ctx.translate(boatX, boatY);
+    ctx.translate(position.x, position.y);
+    ctx.rotate(Math.atan2(tangent.y, tangent.x) + Math.PI / 2 + boatHeading
+      + (speed < 0 ? Math.PI : 0) + (capsized ? Math.PI : 0));
+    ctx.scale(boatScale, boatScale);
     ctx.fillStyle = "#10251f66";
     ctx.beginPath();
-    ctx.ellipse(4, 6, 25, 37, 0, 0, Math.PI * 2);
+    ctx.ellipse(4, 5, 25, 82, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#bdc5b0";
+    ctx.fillStyle = capsized ? "#766c57" : "#b58b55";
     ctx.beginPath();
-    ctx.moveTo(0, -34);
-    ctx.quadraticCurveTo(20, -20, 19, 11);
-    ctx.lineTo(11, 28);
-    ctx.lineTo(-11, 28);
-    ctx.lineTo(-19, 11);
-    ctx.quadraticCurveTo(-20, -20, 0, -34);
+    ctx.moveTo(0, -78);
+    ctx.quadraticCurveTo(18, -66, 20, -36);
+    ctx.lineTo(17, 39);
+    ctx.quadraticCurveTo(15, 68, 4, 79);
+    ctx.quadraticCurveTo(0, 84, -4, 79);
+    ctx.quadraticCurveTo(-15, 68, -17, 39);
+    ctx.lineTo(-20, -36);
+    ctx.quadraticCurveTo(-18, -66, 0, -78);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "#54675a";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#5b4937";
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    ctx.fillStyle = "#536b5a";
-    ctx.beginPath();
-    ctx.moveTo(0, -24);
-    ctx.lineTo(13, -10);
-    ctx.lineTo(11, 13);
-    ctx.lineTo(-11, 13);
-    ctx.lineTo(-13, -10);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#b9965e";
-    ctx.fillRect(-10, 13, 20, 4);
-    ctx.fillStyle = "#d4a25f";
-    ctx.fillRect(-4, 26, 8, 13);
-    ctx.fillStyle = "#283b30";
-    ctx.fillRect(-1, 31, 2, 15);
-    ctx.strokeStyle = "#d2ded050";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, -27);
-    ctx.lineTo(0, -12);
-    ctx.stroke();
+    if (capsized) {
+      ctx.strokeStyle = "#c5b98b";
+      ctx.lineWidth = 2;
+      for (let ribY = -58; ribY <= 58; ribY += 14) {
+        ctx.beginPath();
+        ctx.moveTo(-16, ribY);
+        ctx.lineTo(16, ribY);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#cf704d";
+      ctx.beginPath();
+      ctx.arc(0, 68, 5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = "#8c6941";
+      ctx.beginPath();
+      ctx.moveTo(0, -69);
+      ctx.quadraticCurveTo(14, -55, 14, -34);
+      ctx.lineTo(12, 38);
+      ctx.quadraticCurveTo(10, 59, 0, 72);
+      ctx.quadraticCurveTo(-10, 59, -12, 38);
+      ctx.lineTo(-14, -34);
+      ctx.quadraticCurveTo(-14, -55, 0, -69);
+      ctx.closePath();
+      ctx.fill();
+
+      const seatY = [-44, -14, 16, 46];
+      const clothes = ["#5d7481", "#879157", "#b96945", "#4d6262"];
+      for (let index = 0; index < seatY.length; index++) {
+        const y = seatY[index];
+        ctx.fillStyle = "#d0b37d";
+        ctx.fillRect(-15, y - 2, 30, 5);
+        ctx.fillStyle = "#765638";
+        ctx.fillRect(-16, y + 2, 3, 4);
+        ctx.fillRect(13, y + 2, 3, 4);
+
+        ctx.fillStyle = "#17241e77";
+        ctx.beginPath();
+        ctx.ellipse(1, y - 1, 8, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = clothes[index];
+        ctx.beginPath();
+        ctx.ellipse(0, y + 1, 7, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#d3a77c";
+        ctx.beginPath();
+        ctx.arc(0, y - 8, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#49382d";
+        ctx.beginPath();
+        ctx.arc(-0.5, y - 9, 5, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#d3a77c";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(-5, y - 1);
+        ctx.lineTo(-10, y - 5);
+        ctx.moveTo(5, y - 1);
+        ctx.lineTo(10, y - 5);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#5d6260";
+      ctx.beginPath();
+      ctx.roundRect(-5, 76, 10, 17, 3);
+      ctx.fill();
+      ctx.fillStyle = "#252e2b";
+      ctx.fillRect(-2, 86, 4, 11);
+      ctx.strokeStyle = "#b5b5a3";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, -76);
+      ctx.lineTo(0, 75);
+      ctx.stroke();
+      ctx.strokeStyle = "#514d3c";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 84);
+      ctx.lineTo(9, 76);
+      ctx.stroke();
+      ctx.fillStyle = "#d4c392";
+      ctx.beginPath();
+      ctx.ellipse(-8, -73, 4, 2.5, -0.3, 0, Math.PI * 2);
+      ctx.ellipse(8, -73, 4, 2.5, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
   function drawScene() {
+    const station = startStation + distance;
+    sceneCamera = { point: routePointAtStation(station) };
     drawBank();
     drawWater();
     drawBeaches();
@@ -572,6 +841,7 @@
     let master;
     let ambienceGain;
     let engineGain;
+    let engineOscillators = [];
     let birdTimer;
     let enabled = true;
 
@@ -633,15 +903,16 @@
         noiseSource(850, 0.26);
         noiseSource(210, 0.11);
 
-        for (const [frequency, level] of [[58, 0.16], [87, 0.045]]) {
+        for (let harmonic = 1; harmonic <= motor.speedLevels; harmonic++) {
           const oscillator = context.createOscillator();
           const gain = context.createGain();
-          oscillator.type = "sawtooth";
-          oscillator.frequency.value = frequency;
-          gain.gain.value = level;
+          oscillator.type = harmonic === 1 ? "square" : "sine";
+          oscillator.frequency.value = motor.minimumRpm / 60 * harmonic;
+          gain.gain.value = 1 / harmonic;
           oscillator.connect(gain);
           gain.connect(engineGain);
           oscillator.start();
+          engineOscillators.push(oscillator);
         }
       } catch (error) {
         console.error("Não foi possível iniciar os sons do passeio.", error);
@@ -660,6 +931,7 @@
       if (!enabled) return;
       master.gain.setTargetAtTime(Number(volumeSlider.value) / 100 * 0.75, context.currentTime, 0.08);
       ambienceGain.gain.setTargetAtTime(0.45, context.currentTime, 0.1);
+      setEngineState(getEngineTelemetry());
       if (birdTimer === undefined) birdTimer = window.setInterval(chirp, 1050 + Math.random() * 700);
     }
 
@@ -671,10 +943,18 @@
       birdTimer = undefined;
     }
 
-    function setThrottle(amount) {
-      if (context && state === "playing" && enabled) {
-        engineGain.gain.setTargetAtTime(0.05 + amount * 0.23, context.currentTime, 0.12);
-      }
+    function setEngineState({ rpm, noiseDb }) {
+      if (!context || state !== "playing") return;
+      const now = context.currentTime;
+      const fundamental = rpm / 60;
+      engineOscillators.forEach((oscillator, index) => {
+        oscillator.frequency.setTargetAtTime(fundamental * (index + 1), now, 0.08);
+      });
+      const maximumNoiseDb = motor.noiseLevelsDb[motor.speedLevels - 1];
+      const amplitude = rpm === 0
+        ? 0
+        : motor.maximumEngineAudioGain * 10 ** ((noiseDb - maximumNoiseDb) / 20);
+      engineGain.gain.setTargetAtTime(enabled ? amplitude : 0, now, 0.12);
     }
 
     function toggle() {
@@ -696,7 +976,7 @@
     });
     soundToggle.addEventListener("click", toggle);
 
-    return { play, pause, setThrottle };
+    return { play, pause, setEngineState };
   }
 
   startButton.addEventListener("click", beginGame);

@@ -1,0 +1,22 @@
+tipo: 2 tempos
+potencia: 5 HP
+velocidades: 5 niveis de rotacao/ruido (nao sao marchas mecanicas)
+RPM minimo: 800
+RPM maximo: 9000
+Som: onda quadrada na frequencia RPM / 60; 13,3 Hz na minima e 150 Hz na maxima
+Harmonicas: 5 componentes sonoras
+Ruido: 65 dB, 75 dB, 85 dB, 95 dB, 105 dB (um nivel por faixa de rotacao)
+O som simulado aumenta de intensidade conforme a rotacao; os dB sao niveis relativos do jogo, nao uma medicao acustica calibrada
+Consumo: 8 litros rio acima (contra a correnteza) por trecho de 9 km; 4 litros rio abaixo (a favor da correnteza) por trecho de 9 km
+Tempo x velocidade: na velocidade maxima, 30 minutos rio acima e 20 minutos rio abaixo por trecho de 9 km.
+Velocidade maxima derivada do tempo: 18 km/h rio acima; 27 km/h rio abaixo.
+Tanque de combustivel: capacidade de 10 litros; o jogo inicia com 3 litros.
+Audio sintetizado: reduzir o ganho do motor para que o nivel 5 / 9.000 RPM nao fique agressivo. Ganho maximo do motor limitado a 0,012 antes do controle geral de volume; dB exibidos sao apenas niveis relativos do jogo.
+
+Integracao com o jogo
+---------------------
+Os parametros sao espelhados no objeto motor em js/game.js para permitir que
+index.html continue abrindo localmente pelo navegador (file://). A velocidade
+de jogo e exibida em km/h; deslocamento usa km/h convertidos para m/s, para que
+os tempos por trecho sejam respeitados em velocidade maxima. Ao alterar este
+arquivo, ajuste tambem esse objeto, o painel, o consumo, a velocidade e o audio.

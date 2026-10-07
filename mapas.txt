@@ -1,0 +1,15 @@
+O jogo tem dois mapas:
+
+1. Minimapa no canto superior direito: usa a foto2.jpg como referencia do
+  trajeto. Um ponto vermelho indica a posicao atual da canoa e se desloca pelo
+  leito conforme a velocidade e a direcao de navegacao. Deve permanecer sobre
+  o curso do rio entre o ponto 1, o inicio e o ponto 2.
+
+2. Mapa principal ampliado: vista superior da canoa navegando no rio; mostra
+  as curvas do mesmo trajeto, as margens, pedras, galhos e demais elementos.
+  A posicao/camera da canoa e o cenario devem acompanhar o progresso no
+  minimapa, sem atravessar as margens.
+
+Manutencao: qualquer alteracao nesta especificacao deve ser refletida em
+index.html, css/game.css e js/game.js. Mudancas de implementacao dos mapas
+devem atualizar este arquivo e ser verificadas nos dois mapas.
