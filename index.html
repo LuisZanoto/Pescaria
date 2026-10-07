@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10251f">
+  <meta name="description" content="Um passeio de barco pelo sinuoso rio Mogi.">
+  <title>Pescaria no Mogi</title>
+  <link rel="stylesheet" href="css/game.css">
+  <script src="js/game.js" defer></script>
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Pescaria no Mogi, início">
+        <span class="brand-mark" aria-hidden="true">≈</span>
+        <span>
+          <span class="eyebrow">UM PASSEIO PELO RIO</span>
+          <h1>Pescaria <span>no Mogi</span></h1>
+        </span>
+      </a>
+      <div class="sound-controls">
+        <label class="volume-control" for="volume">
+          <span aria-hidden="true">♪</span>
+          <span class="visually-hidden">Volume dos sons</span>
+          <input id="volume" type="range" min="0" max="100" value="45">
+        </label>
+        <button class="sound-button" id="sound-toggle" type="button" aria-pressed="true">
+          <span aria-hidden="true">◖))</span> SOM LIGADO
+        </button>
+      </div>
+    </header>
+
+    <section class="dashboard" aria-label="Painel da navegação">
+      <div class="stat">
+        <span class="stat-icon" aria-hidden="true">⌁</span>
+        <span><span class="stat-label">PERCURSO</span><strong id="distance">0 m</strong></span>
+      </div>
+      <div class="stat">
+        <span class="stat-icon" aria-hidden="true">◉</span>
+        <span><span class="stat-label">MOTOR DE POPA</span><strong>15 HP</strong></span>
+      </div>
+      <div class="stat">
+        <span class="stat-icon" aria-hidden="true">◌</span>
+        <span><span class="stat-label">VELOCIDADE</span><strong id="speed">0 km/h</strong></span>
+      </div>
+      <div class="stat status-stat">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <span><span class="stat-label">NAVEGAÇÃO</span><strong id="status">Píer do Mogi</strong></span>
+      </div>
+    </section>
+
+    <section class="river-view" aria-label="Rio Mogi">
+      <canvas id="river" width="960" height="640" aria-label="Vista superior estática do rio Mogi; o cenário acompanha o barco quando ele se move"></canvas>
+      <div class="location-tag"><span aria-hidden="true">⌖</span> RIO MOGI <span class="tag-divider">·</span> ÁGUA DOCE</div>
+      <div class="river-message" id="river-message" role="status" aria-live="polite"></div>
+      <div class="overlay" id="overlay">
+        <div class="dialog">
+          <span class="dialog-kicker">EXPLORE O RIO MOGI</span>
+          <h2 id="overlay-title">A correnteza<br>está chamando.</h2>
+          <p id="overlay-copy">Assuma o leme do barco com motor de popa de 15 HP. O rio só corre quando o barco se move. Acelere, solte para manter o ritmo e use a seta para baixo para reduzir ou dar ré.</p>
+          <button id="start-button" type="button"><span aria-hidden="true">▶</span> <span id="button-label">COMEÇAR O PASSEIO</span></button>
+          <span class="dialog-hint">UM PASSEIO TRANQUILO, NO SEU RITMO</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="bottom-bar">
+      <div class="controls-copy">
+        <span class="footer-label">NO LEME</span>
+        <span><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> <span class="muted-copy">para virar</span></span>
+        <span><kbd>↑</kbd> acelera <kbd>↓</kbd> <span class="muted-copy">reduz / dá ré · solte para manter</span></span>
+        <span><kbd>P</kbd> <span class="muted-copy">pausar</span></span>
+      </div>
+      <div class="touch-controls" aria-label="Controles de toque">
+        <button type="button" data-control="left" aria-label="Virar para a esquerda">←</button>
+        <button type="button" data-control="slower" aria-label="Reduzir velocidade; mantenha pressionado para dar ré">−</button>
+        <button type="button" data-control="faster" aria-label="Aumentar velocidade; mantenha pressionado para acelerar">+</button>
+        <button type="button" data-control="right" aria-label="Virar para a direita">→</button>
+      </div>
+      <span class="footer-note"><span aria-hidden="true">✳</span> Respire fundo. Você está no Mogi.</span>
+    </footer>
+  </main>
+</body>
+</html>
