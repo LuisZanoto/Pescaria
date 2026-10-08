@@ -1,15 +1,33 @@
-O jogo tem dois mapas:
+Mapa exibido ao jogador
+-----------------------
+Foto01.png e a imagem visivel durante o teste.
 
-1. Minimapa no canto superior direito: usa a foto2.jpg como referencia do
-  trajeto. Um ponto vermelho indica a posicao atual da canoa e se desloca pelo
-  leito conforme a velocidade e a direcao de navegacao. Deve permanecer sobre
-  o curso do rio entre o ponto 1, o inicio e o ponto 2.
+Mapa de navegacao
+-----------------
+Foto02.png tem as mesmas dimensoes de Foto01.png e nao e exibida. A area
+verde RGB (34, 177, 76) indica o ponto de partida; o jogo posiciona a canoa
+no centro dessa area. O traco azul e apenas uma referencia visual: nao ha
+colisao nem limite de navegacao associado a ele ou as bordas do mapa.
 
-2. Mapa principal ampliado: vista superior da canoa navegando no rio; mostra
-  as curvas do mesmo trajeto, as margens, pedras, galhos e demais elementos.
-  A posicao/camera da canoa e o cenario devem acompanhar o progresso no
-  minimapa, sem atravessar as margens.
+Mapa de conferencia do rio
+--------------------------
+Foto03.png foi gerada a partir da Foto02.png, preservando a resolucao de
+2425 x 4881 pixels. A area delimitada pelas linhas azuis esta preenchida de
+laranja (#ff8200) para permitir conferir visualmente a superficie do rio.
+Foto03.png e a fonte editavel dos limites de navegacao: somente pixels
+proximos ao laranja RGB (255, 130, 0) sao navegaveis. Qualquer outra cor
+bloqueia a passagem, inclusive manchas pintadas dentro do rio para representar
+futuros obstaculos. Pinte com cores solidas, sem transparencia ou suavizacao
+de borda, e preserve as dimensoes originais. A mascara e lida na resolucao
+integral para conservar detalhes finos.
 
-Manutencao: qualquer alteracao nesta especificacao deve ser refletida em
-index.html, css/game.css e js/game.js. Mudancas de implementacao dos mapas
-devem atualizar este arquivo e ser verificadas nos dois mapas.
+Teste atual
+-----------
+O percurso estimado tem 15 km, do canto inferior esquerdo ao superior direito.
+Este modo de teste ignora as especificacoes reais do motor. A navegacao nao
+tem limite de tempo. A seta para cima acelera ate 100 km/h;
+a seta para baixo freia, e as setas esquerda/direita giram a canoa.
+A camera acompanha a canoa e exibe a Foto01.png com zoom duas vezes maior
+que o enquadramento anterior. A seta vermelha mede 15 pixels.
+O teste de navegacao permite a canoa avancar dentro da superficie laranja
+identificada na Foto03.png e para quando ela tenta sair dessa area.

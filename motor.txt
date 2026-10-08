@@ -1,8 +1,10 @@
 tipo: 2 tempos
 potencia: 5 HP
+direcao: sem marcha a re; avanca e permite curvas fechadas com diametro minimo de 10 metros. No retorno, os controles esquerda/direita se invertem.
 velocidades: 5 niveis de rotacao/ruido (nao sao marchas mecanicas)
 RPM minimo: 800
 RPM maximo: 9000
+Pontos de reabastecimento somente no inicio do trajeto. 
 Som: onda quadrada na frequencia RPM / 60; 13,3 Hz na minima e 150 Hz na maxima
 Harmonicas: 5 componentes sonoras
 Ruido: 65 dB, 75 dB, 85 dB, 95 dB, 105 dB (um nivel por faixa de rotacao)
@@ -20,3 +22,5 @@ index.html continue abrindo localmente pelo navegador (file://). A velocidade
 de jogo e exibida em km/h; deslocamento usa km/h convertidos para m/s, para que
 os tempos por trecho sejam respeitados em velocidade maxima. Ao alterar este
 arquivo, ajuste tambem esse objeto, o painel, o consumo, a velocidade e o audio.
+O jogo oferece abastecimento apenas no Pesqueiro do Ney; a partida comeca com
+3 litros e o tanque pode ser completado ate 10 litros antes da saida.

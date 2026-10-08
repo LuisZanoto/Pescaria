@@ -3,105 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10251f">
-  <meta name="description" content="Um passeio de barco pelo sinuoso rio Mogi.">
-  <title>Pescaria no Mogi</title>
+  <meta name="theme-color" content="#101b17">
+  <meta name="description" content="Teste de navegação no rio com controle por setas.">
+  <title>Teste de navegação | Pescaria</title>
   <link rel="stylesheet" href="css/game.css">
   <script src="js/game.js" defer></script>
 </head>
 <body>
   <main class="game-shell">
     <header class="topbar">
-      <a class="brand" href="./" aria-label="Pescaria no Mogi, início">
-        <span class="brand-mark" aria-hidden="true">≈</span>
-        <span>
-          <span class="eyebrow">UM PASSEIO PELO RIO</span>
-          <h1>Pescaria <span>no Mogi</span></h1>
-        </span>
-      </a>
-      <div class="sound-controls">
-        <label class="volume-control" for="volume">
-          <span aria-hidden="true">♪</span>
-          <span class="visually-hidden">Volume dos sons</span>
-          <input id="volume" type="range" min="0" max="100" value="45">
-        </label>
-        <button class="sound-button" id="sound-toggle" type="button" aria-pressed="true">
-          <span aria-hidden="true">◖))</span> SOM LIGADO
-        </button>
+      <div>
+        <p class="eyebrow">PESCARIA · TESTE DE NAVEGAÇÃO</p>
+        <h1>Rio <span>Mogi</span></h1>
       </div>
+      <p class="speed-readout">VELOCIDADE <strong id="speed">0 km/h</strong></p>
     </header>
 
-    <section class="dashboard" aria-label="Painel da navegação">
-      <div class="stat">
-        <span class="stat-icon" aria-hidden="true">⌁</span>
-        <span><span class="stat-label">POSIÇÃO NO RIO</span><strong id="distance">9,0 km</strong></span>
-      </div>
-      <div class="stat">
-        <span class="stat-icon" aria-hidden="true">◉</span>
-        <span>
-          <span class="stat-label">MOTOR DE POPA</span>
-          <strong id="motor-summary">5 HP · 2T</strong>
-          <span class="stat-detail" id="motor-readout">NÍVEL 1 · 800 RPM · 65 dB</span>
-        </span>
-      </div>
-      <div class="stat">
-        <span class="stat-icon" aria-hidden="true">◌</span>
-        <span><span class="stat-label">VELOCIDADE</span><strong id="speed">0 km/h</strong></span>
-      </div>
-      <div class="stat">
-        <span class="stat-icon" aria-hidden="true">◒</span>
-        <span>
-          <span class="stat-label">GASOLINA</span>
-          <strong id="fuel">3,00 / 10 L</strong>
-          <span class="stat-detail">TANQUE · INÍCIO 3 L</span>
-        </span>
-      </div>
-      <div class="stat status-stat">
-        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
-        <span><span class="stat-label">TRECHO</span><strong id="status">Início do trajeto</strong></span>
-      </div>
-    </section>
-
-    <section class="river-view" aria-label="Rio Mogi">
-      <canvas id="river" width="960" height="640" aria-label="Vista superior de uma canoa de seis metros com quatro pescadores, navegando no rio Mogi"></canvas>
-      <div class="location-tag"><span aria-hidden="true">⌖</span> RIO MOGI <span class="tag-divider">·</span> ÁGUA DOCE</div>
-      <aside class="route-map" aria-label="Mapa de satélite do trajeto do rio Mogi, com um ponto vermelho indicando a posição da canoa">
-        <div class="route-map-heading"><span>TRAJETO DO MOGI</span><strong id="map-progress">INÍCIO · 9,0 KM</strong></div>
-        <div class="route-map-stage">
-          <img src="foto2.jpg" alt="Mapa de satélite com o rio Mogi sinuoso, início no centro, ponto 1 à direita e ponto 2 à esquerda">
-          <svg viewBox="0 0 1151 554" preserveAspectRatio="none" role="img" aria-label="Marcador da posição da canoa sobre o curso do rio">
-            <path class="map-geometry" id="upstream-course" d="M1098 287 C1081 274 1068 256 1064 238 C1055 213 1039 198 1018 197 C995 198 985 218 972 235 C957 252 935 258 917 246 C899 231 900 210 916 193 C930 177 950 167 953 148 C958 128 944 111 925 110 C903 108 889 127 878 148 C865 173 851 198 830 203 C808 210 790 192 790 174 C789 154 806 143 823 130 C837 116 838 98 824 86 C805 74 783 85 772 104 C759 127 755 153 737 169 C718 186 695 191 675 180 C655 169 641 152 620 147 C597 143 584 161 568 179 C554 194 535 198 521 186 C508 175 512 156 504 140 C496 121 476 110 458 118 C438 127 421 147 401 156 C380 165 358 158 340 147 C322 137 302 139 287 154 C270 169 264 191 278 208 C293 225 324 223 349 218 C375 215 393 230 408 249 C420 268 425 290 447 302 C468 312 489 298 498 277 C510 252 502 225 517 206 C529 187 545 175 550 151 C555 122 545 92 545 62 C545 47 546 34 546 23"/>
-            <path class="map-geometry" id="downstream-course" d="M546 23 C548 54 552 82 548 111 C544 143 530 166 517 190 C504 213 506 241 499 264 C492 288 475 303 454 301 C433 299 422 278 411 256 C399 233 382 218 357 216 C332 214 302 225 283 209 C264 194 269 172 286 155 C302 139 323 138 343 150 C364 162 385 166 405 155 C425 144 438 126 459 118 C480 110 498 124 505 143 C512 163 510 180 524 190 C539 200 554 190 568 176 C583 161 599 145 620 148 C641 151 656 169 676 181 C697 193 718 186 737 170 C755 154 759 127 772 105 C785 84 805 75 824 87 C840 100 837 118 822 132 C806 146 789 156 790 176 C791 196 809 209 831 203 C853 198 866 174 879 148 C890 126 904 108 926 111 C946 114 958 130 953 149 C949 169 931 180 916 194 C900 211 899 232 918 247 C937 262 958 250 974 235 C989 219 998 199 1019 198 C1040 198 1057 214 1064 239 C1070 260 1083 278 1098 287 C1080 296 1059 297 1039 288 C1018 279 1006 261 986 257 C965 253 949 267 934 283 C918 301 902 317 879 318 C858 319 843 305 843 286 C843 268 858 252 876 239 C894 226 899 208 885 192 C871 176 849 176 831 190 C812 204 807 229 790 247 C772 266 750 272 729 263 C709 255 698 235 679 227 C660 218 641 229 630 247 C618 266 619 293 603 310 C587 326 563 327 548 311 C533 294 536 272 529 251 C522 230 509 216 492 219 C473 222 462 241 449 259 C435 278 415 290 394 284 C374 278 364 259 349 247 C333 234 313 237 300 253 C286 271 292 293 309 309 C327 326 352 331 374 326 C396 320 413 306 434 310 C455 314 466 335 463 357 C460 379 442 394 421 405 C401 416 384 432 386 453 C389 475 411 487 434 483 C457 479 475 461 493 447 C512 433 532 431 551 443 C572 456 579 480 596 497 C613 514 635 519 654 507 C674 495 680 470 697 453 C714 436 737 433 754 447 C772 461 771 486 760 506 C749 526 729 539 706 544 C684 549 664 541 644 531 C624 521 603 514 583 519 C561 524 542 540 519 543 C496 546 475 535 468 515 C461 495 472 476 490 464 C508 452 527 445 528 426 C529 408 511 396 492 397 C471 398 454 414 436 429 C417 445 396 454 375 447 C354 440 346 419 330 403 C314 387 293 383 274 394 C255 405 247 428 230 440 C212 452 188 447 177 429 C166 411 177 390 194 376 C211 362 232 350 231 330 C230 310 210 297 190 301 C168 305 152 324 133 334 C114 344 91 337 82 319 C73 301 84 281 102 266 C120 251 142 241 145 221 C148 201 133 184 112 181 C91 178 73 191 57 205 C40 219 22 234 10 250 C1 270 4 292 17 312 C29 332 29 350 17 373 C8 390 10 405 14 417"/>
-            <circle class="map-boat" id="map-boat" cx="0" cy="0" r="8" transform="translate(546 23)"/>
-          </svg>
-        </div>
-      </aside>
-      <div class="river-message" id="river-message" role="status" aria-live="polite"></div>
-      <div class="overlay" id="overlay">
+    <section class="river-view" aria-label="Área de navegação">
+      <canvas id="river" aria-label="Mapa do rio com a posição da canoa"></canvas>
+      <img id="map-image" src="Foto01.png" alt="" hidden>
+      <img id="boundary-map" src="Foto02.png" alt="" hidden>
+      <img id="navigation-map" src="Foto03.png" alt="" hidden>
+      <section id="overlay" class="overlay" aria-labelledby="overlay-title">
         <div class="dialog">
-          <span class="dialog-kicker">EXPLORE O RIO MOGI</span>
-          <h2 id="overlay-title">A correnteza<br>está chamando.</h2>
-          <p id="overlay-copy">O início fica no meio do trajeto. Desça o rio para chegar ao ponto 2; use a ré para subir até o ponto 1. Cada trecho tem 9 km: na velocidade máxima, são 18 km/h rio acima (30 min) e 27 km/h rio abaixo (20 min). A canoa mede 6 m de comprimento por 1,2 m de largura e leva quatro pescadores: um pilota no motor de 5 HP e os outros três ocupam os demais bancos. O tanque comporta 10 L e começa com 3 L.</p>
-          <button id="start-button" type="button"><span aria-hidden="true">▶</span> <span id="button-label">COMEÇAR O PASSEIO</span></button>
-          <span class="dialog-hint">UM PASSEIO TRANQUILO, NO SEU RITMO</span>
+          <p class="eyebrow">PERCURSO ESTIMADO · 15 KM</p>
+          <h2 id="overlay-title">Pronto para navegar?</h2>
+          <p id="overlay-copy">Use as setas para acelerar, frear e virar. A navegação é livre, sem limite de tempo, com velocidade máxima de 100 km/h.</p>
+          <button id="start-button" type="button" disabled>CARREGANDO MAPA...</button>
         </div>
-      </div>
+      </section>
     </section>
 
     <footer class="bottom-bar">
-      <div class="controls-copy">
-        <span class="footer-label">NO LEME</span>
-        <span><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> <span class="muted-copy">para virar</span></span>
-        <span><kbd>↑</kbd> acelera <kbd>↓</kbd> <span class="muted-copy">reduz / dá ré · solte para manter</span></span>
-        <span><kbd>P</kbd> <span class="muted-copy">pausar</span></span>
-      </div>
-      <div class="touch-controls" aria-label="Controles de toque">
-        <button type="button" data-control="left" aria-label="Virar para a esquerda">←</button>
-        <button type="button" data-control="slower" aria-label="Reduzir velocidade; mantenha pressionado para dar ré">−</button>
-        <button type="button" data-control="faster" aria-label="Aumentar velocidade; mantenha pressionado para acelerar">+</button>
-        <button type="button" data-control="right" aria-label="Virar para a direita">→</button>
-      </div>
-      <span class="footer-note"><span aria-hidden="true">✳</span> Respire fundo. Você está no Mogi.</span>
+      <p class="controls-copy"><span class="eyebrow">CONTROLES</span> <kbd>↑</kbd> acelerar <kbd>↓</kbd> frear <kbd>←</kbd> <kbd>→</kbd> virar</p>
     </footer>
   </main>
 </body>
