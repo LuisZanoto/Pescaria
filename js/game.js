@@ -20,10 +20,12 @@
 
   const strips = new Map();
   const pendingStrips = new Map();
+  const stripQueue = [];
   const failedStrips = new Map();
   let mapWidth = 0;
   let mapHeight = 0;
   let stripCount = 0;
+  let stripLoadInProgress = false;
   let startPosition;
   let speedKmh = 0;
   let previousFrameTime = 0;
@@ -96,6 +98,7 @@
           navigablePixels++;
         }
       }
+      if ((y + 1) % 32 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
     }
 
     if (index === 0 && navigablePixels === 0) {
@@ -116,6 +119,7 @@
             greenPixels++;
           }
         }
+        if ((y + 1) % 32 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
       }
 
       if (greenPixels === 0) throw new Error("Não foi possível localizar a partida na faixa inferior de Foto02.png.");
@@ -131,28 +135,60 @@
     return { image: images[0], navigationMask, top: bounds.top, height: bounds.height };
   }
 
-  function ensureStrip(index) {
-    if (index < 0 || index >= stripCount || strips.has(index)) return Promise.resolve();
-    if (pendingStrips.has(index)) return pendingStrips.get(index);
+  function processStripQueue() {
+    if (stripLoadInProgress) return;
 
-    const request = loadStrip(index)
+    stripQueue.sort((first, second) => first.priority - second.priority || first.index - second.index);
+    const job = stripQueue.shift();
+    if (!job) return;
+    if (pendingStrips.get(job.index) !== job) {
+      processStripQueue();
+      return;
+    }
+
+    stripLoadInProgress = true;
+    loadStrip(job.index)
       .then(strip => {
-        strips.set(index, strip);
-        failedStrips.delete(index);
+        strips.set(job.index, strip);
+        failedStrips.delete(job.index);
         render();
+        job.resolve(strip);
       })
       .catch(error => {
-        failedStrips.set(index, error);
-        throw error;
+        failedStrips.set(job.index, error);
+        job.reject(error);
       })
-      .finally(() => pendingStrips.delete(index));
-    pendingStrips.set(index, request);
-    return request;
+      .finally(() => {
+        pendingStrips.delete(job.index);
+        stripLoadInProgress = false;
+        processStripQueue();
+      });
+  }
+
+  function ensureStrip(index, priority = 0) {
+    if (index < 0 || index >= stripCount || strips.has(index)) return Promise.resolve();
+    const pending = pendingStrips.get(index);
+    if (pending) {
+      pending.priority = Math.min(pending.priority, priority);
+      return pending.promise;
+    }
+
+    let resolve;
+    let reject;
+    const promise = new Promise((onResolve, onReject) => {
+      resolve = onResolve;
+      reject = onReject;
+    });
+    const job = { index, priority, promise, resolve, reject };
+    pendingStrips.set(index, job);
+    stripQueue.push(job);
+    processStripQueue();
+    return promise;
   }
 
   function scheduleStrip(index) {
     if (index < 0 || index >= stripCount || strips.has(index) || failedStrips.has(index)) return;
-    ensureStrip(index).catch(error => console.error(`Não foi possível carregar a faixa ${index + 1} do mapa.`, error));
+    ensureStrip(index, 0).catch(error => console.error(`Não foi possível carregar a faixa ${index + 1} do mapa.`, error));
   }
 
   function requestNearbyStrips() {
@@ -173,6 +209,17 @@
     overlayCopy.textContent = `${index === null ? "" : `Faixa ${index + 1}: `}${error.message} Atualize a página para tentar novamente.`;
     startButton.disabled = true;
     startButton.textContent = "MAPA INDISPONÍVEL";
+  }
+
+  async function preloadRemainingStrips() {
+    for (let index = 1; index < stripCount; index++) {
+      if (strips.has(index)) continue;
+      try {
+        await ensureStrip(index, 1);
+      } catch (error) {
+        console.error(`Não foi possível pré-carregar a faixa ${index + 1} do mapa.`, error);
+      }
+    }
   }
 
   function isNavigableAt(x, y) {
@@ -304,6 +351,8 @@
       pixelRatio * offsetY
     );
     for (const strip of strips.values()) {
+      const stripScreenTop = offsetY + strip.top * zoom;
+      if (stripScreenTop + strip.height * zoom < 0 || stripScreenTop > height) continue;
       ctx.drawImage(strip.image, 0, strip.top);
     }
     drawBoat(
@@ -372,6 +421,7 @@
       startButton.disabled = false;
       startButton.textContent = "INICIAR NAVEGAÇÃO";
       render();
+      preloadRemainingStrips();
     } catch (error) {
       console.error("Não foi possível preparar os mapas para a navegação.", error);
       showMapError(error, null);

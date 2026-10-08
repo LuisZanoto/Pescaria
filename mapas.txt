@@ -26,9 +26,12 @@ Faixas do mapa
 Os tres mapas originais sao divididos em 20 faixas horizontais pela ferramenta
 tools/split-maps.ps1. A numeracao dos arquivos em maps/ comeca em 01 na parte
 de baixo e termina em 20 no topo. O jogo carrega primeiro a faixa 01 e busca
-as faixas proximas conforme a canoa avanca. Depois de editar os mapas
-originais, execute `powershell -NoProfile -ExecutionPolicy Bypass -File
-.\tools\split-maps.ps1` no Windows para atualizar as faixas e o manifesto.
+as outras faixas em sequencia, priorizando as necessarias para a navegacao.
+O processamento das faixas cede tempo ao navegador, e apenas as faixas
+visiveis sao desenhadas durante o jogo.
+Depois de editar os mapas originais, execute `powershell -NoProfile
+-ExecutionPolicy Bypass -File .\tools\split-maps.ps1` no Windows para
+atualizar as faixas e o manifesto.
 
 Teste atual
 -----------
