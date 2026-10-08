@@ -3,27 +3,27 @@
 
   const canvas = document.querySelector("#river");
   const ctx = canvas.getContext("2d");
-  const mapImage = document.querySelector("#map-image");
-  const boundaryImage = document.querySelector("#boundary-map");
-  const navigationMap = document.querySelector("#navigation-map");
   const overlay = document.querySelector("#overlay");
   const overlayTitle = document.querySelector("#overlay-title");
   const overlayCopy = document.querySelector("#overlay-copy");
   const startButton = document.querySelector("#start-button");
   const speedLabel = document.querySelector("#speed");
+  const mapTypes = ["Foto01", "Foto02", "Foto03"];
 
   const routeLengthMeters = 15000;
   const maximumSpeedKmh = 100;
   const accelerationKmhPerSecond = 36;
   const brakingKmhPerSecond = 55;
-  const maskScale = 1;
   const turnRate = 1.8;
   const pressedKeys = new Set();
   const boat = { x: 0, y: 0, heading: -Math.PI / 4 };
 
-  let navigationMask;
-  let maskWidth = 0;
-  let maskHeight = 0;
+  const strips = new Map();
+  const pendingStrips = new Map();
+  const failedStrips = new Map();
+  let mapWidth = 0;
+  let mapHeight = 0;
+  let stripCount = 0;
   let startPosition;
   let speedKmh = 0;
   let previousFrameTime = 0;
@@ -53,83 +53,142 @@
     });
   }
 
-  function createNavigationMask() {
-    if (mapImage.naturalWidth !== boundaryImage.naturalWidth ||
-        mapImage.naturalHeight !== boundaryImage.naturalHeight ||
-        mapImage.naturalWidth !== navigationMap.naturalWidth ||
-        mapImage.naturalHeight !== navigationMap.naturalHeight) {
-      throw new Error("As três fotos do mapa precisam ter as mesmas dimensões.");
+  function getStripBounds(index) {
+    const bottom = mapHeight - Math.floor(index * mapHeight / stripCount);
+    const top = mapHeight - Math.floor((index + 1) * mapHeight / stripCount);
+    return { top, height: bottom - top };
+  }
+
+  function readImagePixels(image) {
+    const offscreen = document.createElement("canvas");
+    offscreen.width = image.naturalWidth;
+    offscreen.height = image.naturalHeight;
+    const offscreenContext = offscreen.getContext("2d", { willReadFrequently: true });
+    offscreenContext.drawImage(image, 0, 0);
+    const pixels = offscreenContext.getImageData(0, 0, offscreen.width, offscreen.height).data;
+    offscreen.width = 0;
+    offscreen.height = 0;
+    return pixels;
+  }
+
+  async function loadStrip(index) {
+    const bounds = getStripBounds(index);
+    const images = mapTypes.map(type => {
+      const image = new Image();
+      const fileNumber = String(index + 1).padStart(2, "0");
+      image.src = new URL(`maps/${type}-${fileNumber}.png`, document.baseURI).href;
+      return image;
+    });
+    await Promise.all(images.map(waitForImage));
+
+    if (images.some(image => image.naturalWidth !== mapWidth || image.naturalHeight !== bounds.height)) {
+      throw new Error(`As imagens da faixa ${index + 1} têm dimensões inesperadas.`);
     }
 
-    maskWidth = Math.ceil(navigationMap.naturalWidth * maskScale);
-    maskHeight = Math.ceil(navigationMap.naturalHeight * maskScale);
-    const maskCanvas = document.createElement("canvas");
-    maskCanvas.width = maskWidth;
-    maskCanvas.height = maskHeight;
-    const maskContext = maskCanvas.getContext("2d", { willReadFrequently: true });
-    maskContext.imageSmoothingEnabled = false;
-    maskContext.drawImage(navigationMap, 0, 0, maskWidth, maskHeight);
-
-    const pixels = maskContext.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
-    navigationMask = new Uint8Array(maskWidth * maskHeight);
+    const navigationPixels = readImagePixels(images[2]);
+    const navigationMask = new Uint8Array(mapWidth * bounds.height);
     let navigablePixels = 0;
-    for (let y = 0; y < maskHeight; y++) {
-      for (let x = 0; x < maskWidth; x++) {
-        const pixelIndex = (y * maskWidth + x) * 4;
-        if (isOrangeRiver(pixels[pixelIndex], pixels[pixelIndex + 1], pixels[pixelIndex + 2])) {
-          navigationMask[y * maskWidth + x] = 1;
+    for (let y = 0; y < bounds.height; y++) {
+      for (let x = 0; x < mapWidth; x++) {
+        const pixelIndex = (y * mapWidth + x) * 4;
+        if (isOrangeRiver(navigationPixels[pixelIndex], navigationPixels[pixelIndex + 1], navigationPixels[pixelIndex + 2])) {
+          navigationMask[y * mapWidth + x] = 1;
           navigablePixels++;
         }
       }
     }
-    maskCanvas.width = 0;
-    maskCanvas.height = 0;
 
-    if (navigablePixels === 0) throw new Error("Não foi possível identificar a área laranja navegável da Foto03.png.");
+    if (index === 0 && navigablePixels === 0) {
+      throw new Error("Não foi possível identificar a área navegável na faixa inferior de Foto03.png.");
+    }
 
-    const startCanvas = document.createElement("canvas");
-    startCanvas.width = maskWidth;
-    startCanvas.height = maskHeight;
-    const startContext = startCanvas.getContext("2d", { willReadFrequently: true });
-    startContext.imageSmoothingEnabled = false;
-    startContext.drawImage(boundaryImage, 0, 0, maskWidth, maskHeight);
-    const startPixels = startContext.getImageData(0, 0, maskWidth, maskHeight).data;
-    let greenPixels = 0;
-    let greenXTotal = 0;
-    let greenYTotal = 0;
-
-    for (let y = 0; y < maskHeight; y++) {
-      for (let x = 0; x < maskWidth; x++) {
-        const pixelIndex = (y * maskWidth + x) * 4;
-        const r = startPixels[pixelIndex];
-        const g = startPixels[pixelIndex + 1];
-        const b = startPixels[pixelIndex + 2];
-        if (isGreenStart(r, g, b)) {
-          greenXTotal += x;
-          greenYTotal += y;
-          greenPixels++;
+    if (index === 0) {
+      const startPixels = readImagePixels(images[1]);
+      let greenPixels = 0;
+      let greenXTotal = 0;
+      let greenYTotal = 0;
+      for (let y = 0; y < bounds.height; y++) {
+        for (let x = 0; x < mapWidth; x++) {
+          const pixelIndex = (y * mapWidth + x) * 4;
+          if (isGreenStart(startPixels[pixelIndex], startPixels[pixelIndex + 1], startPixels[pixelIndex + 2])) {
+            greenXTotal += x;
+            greenYTotal += bounds.top + y;
+            greenPixels++;
+          }
         }
       }
+
+      if (greenPixels === 0) throw new Error("Não foi possível localizar a partida na faixa inferior de Foto02.png.");
+
+      startPosition = {
+        x: greenXTotal / greenPixels + 0.5,
+        y: greenYTotal / greenPixels + 0.5
+      };
+      boat.x = startPosition.x;
+      boat.y = startPosition.y;
     }
-    startCanvas.width = 0;
-    startCanvas.height = 0;
 
-    if (greenPixels === 0) throw new Error("Não foi possível identificar a área verde de partida na Foto02.png.");
+    return { image: images[0], navigationMask, top: bounds.top, height: bounds.height };
+  }
 
-    startPosition = {
-      x: (greenXTotal / greenPixels + 0.5) / maskScale,
-      y: (greenYTotal / greenPixels + 0.5) / maskScale
-    };
-    boat.x = startPosition.x;
-    boat.y = startPosition.y;
+  function ensureStrip(index) {
+    if (index < 0 || index >= stripCount || strips.has(index)) return Promise.resolve();
+    if (pendingStrips.has(index)) return pendingStrips.get(index);
+
+    const request = loadStrip(index)
+      .then(strip => {
+        strips.set(index, strip);
+        failedStrips.delete(index);
+        render();
+      })
+      .catch(error => {
+        failedStrips.set(index, error);
+        throw error;
+      })
+      .finally(() => pendingStrips.delete(index));
+    pendingStrips.set(index, request);
+    return request;
+  }
+
+  function scheduleStrip(index) {
+    if (index < 0 || index >= stripCount || strips.has(index) || failedStrips.has(index)) return;
+    ensureStrip(index).catch(error => console.error(`Não foi possível carregar a faixa ${index + 1} do mapa.`, error));
+  }
+
+  function requestNearbyStrips() {
+    if (!startPosition) return;
+    const currentIndex = getStripIndex(boat.y);
+    for (let index = Math.max(0, currentIndex - 1); index <= Math.min(stripCount - 1, currentIndex + 1); index++) {
+      scheduleStrip(index);
+    }
+  }
+
+  function showMapError(error, index) {
+    gameState = "error";
+    speedKmh = 0;
+    pressedKeys.clear();
+    updateSpeed();
+    overlay.hidden = false;
+    overlayTitle.textContent = "Não foi possível carregar o mapa";
+    overlayCopy.textContent = `${index === null ? "" : `Faixa ${index + 1}: `}${error.message} Atualize a página para tentar novamente.`;
+    startButton.disabled = true;
+    startButton.textContent = "MAPA INDISPONÍVEL";
   }
 
   function isNavigableAt(x, y) {
-    const maskX = Math.round(x * maskScale);
-    const maskY = Math.round(y * maskScale);
-    return maskX >= 0 && maskX < maskWidth &&
-      maskY >= 0 && maskY < maskHeight &&
-      navigationMask[maskY * maskWidth + maskX] === 1;
+    const maskX = Math.round(x);
+    const maskY = Math.round(y);
+    if (maskX < 0 || maskX >= mapWidth || maskY < 0 || maskY >= mapHeight) return false;
+
+    const index = getStripIndex(maskY);
+    const strip = strips.get(index);
+    if (!strip) return null;
+    return strip.navigationMask[(maskY - strip.top) * mapWidth + maskX] === 1;
+  }
+
+  function getStripIndex(y) {
+    const mapY = Math.max(0, Math.min(mapHeight - 1, Math.round(y)));
+    return stripCount - 1 - Math.floor(mapY * stripCount / mapHeight);
   }
 
   function staysInNavigableArea(fromX, fromY, toX, toY) {
@@ -139,7 +198,9 @@
       const progress = step / steps;
       const x = fromX + (toX - fromX) * progress;
       const y = fromY + (toY - fromY) * progress;
-      if (!isNavigableAt(x, y)) return false;
+      const navigable = isNavigableAt(x, y);
+      if (navigable === null) return null;
+      if (!navigable) return false;
     }
     return true;
   }
@@ -153,7 +214,7 @@
   }
 
   function getZoom(width) {
-    const previousZoom = Math.min(2.2, Math.min(0.55, width / mapImage.naturalWidth) * 4);
+    const previousZoom = Math.min(2.2, Math.min(0.55, width / mapWidth) * 4);
     return previousZoom * 2;
   }
 
@@ -171,18 +232,28 @@
       return;
     }
 
-    const pixelsPerMeter = mapImage.naturalHeight / routeLengthMeters;
+    const pixelsPerMeter = mapHeight / routeLengthMeters;
     const distance = speedKmh / 3.6 * pixelsPerMeter * delta;
     const nextX = boat.x + Math.cos(boat.heading) * distance;
     const nextY = boat.y + Math.sin(boat.heading) * distance;
 
-    if (!staysInNavigableArea(boat.x, boat.y, nextX, nextY)) {
+    const navigable = staysInNavigableArea(boat.x, boat.y, nextX, nextY);
+    if (navigable === null) {
+      requestNearbyStrips();
+      const neededIndex = getStripIndex(nextY);
+      if (failedStrips.has(neededIndex)) {
+        showMapError(failedStrips.get(neededIndex), neededIndex);
+      }
+      return;
+    }
+    if (!navigable) {
       speedKmh = 0;
       return;
     }
 
     boat.x = nextX;
     boat.y = nextY;
+    requestNearbyStrips();
   }
 
   function drawBoat(x, y, pixelRatio) {
@@ -204,14 +275,14 @@
   }
 
   function render() {
-    if (!ctx || !mapImage.complete || !mapImage.naturalWidth) return;
+    if (!ctx || !mapWidth || strips.size === 0) return;
     const pixelRatio = window.devicePixelRatio || 1;
     const width = canvas.width / pixelRatio;
     const height = canvas.height / pixelRatio;
     const zoom = getZoom(width);
     const boatScreenY = height * 0.68;
-    const renderedMapWidth = mapImage.naturalWidth * zoom;
-    const renderedMapHeight = mapImage.naturalHeight * zoom;
+    const renderedMapWidth = mapWidth * zoom;
+    const renderedMapHeight = mapHeight * zoom;
     const requestedOffsetX = width / 2 - boat.x * zoom;
     const requestedOffsetY = boatScreenY - boat.y * zoom;
     const offsetX = renderedMapWidth <= width
@@ -232,7 +303,9 @@
       pixelRatio * offsetX,
       pixelRatio * offsetY
     );
-    ctx.drawImage(mapImage, 0, 0);
+    for (const strip of strips.values()) {
+      ctx.drawImage(strip.image, 0, strip.top);
+    }
     drawBoat(
       offsetX + boat.x * zoom,
       offsetY + boat.y * zoom,
@@ -246,6 +319,7 @@
     overlay.hidden = true;
     previousFrameTime = performance.now();
     updateSpeed();
+    requestNearbyStrips();
     canvas.focus({ preventScroll: true });
   }
 
@@ -254,6 +328,8 @@
       const elapsed = Math.max(0, (time - previousFrameTime) / 1000);
       moveBoat(Math.min(elapsed, 0.05));
       updateSpeed();
+    } else if (gameState === "ready") {
+      requestNearbyStrips();
     }
     previousFrameTime = time;
     render();
@@ -281,20 +357,24 @@
 
   async function initialize() {
     try {
-      await Promise.all([
-        waitForImage(mapImage),
-        waitForImage(boundaryImage),
-        waitForImage(navigationMap)
-      ]);
-      createNavigationMask();
+      const response = await fetch(new URL("maps/manifest.json", document.baseURI));
+      if (!response.ok) throw new Error(`Não foi possível carregar a configuração dos mapas (HTTP ${response.status}).`);
+      const manifest = await response.json();
+      if (!Number.isInteger(manifest.width) || !Number.isInteger(manifest.height) ||
+          !Number.isInteger(manifest.strips) || manifest.width <= 0 ||
+          manifest.height <= 0 || manifest.strips <= 0) {
+        throw new Error("A configuração dos mapas está inválida.");
+      }
+      mapWidth = manifest.width;
+      mapHeight = manifest.height;
+      stripCount = manifest.strips;
+      await ensureStrip(0);
       startButton.disabled = false;
       startButton.textContent = "INICIAR NAVEGAÇÃO";
       render();
     } catch (error) {
       console.error("Não foi possível preparar os mapas para a navegação.", error);
-      overlayTitle.textContent = "Não foi possível carregar o mapa";
-      overlayCopy.textContent = error.message;
-      startButton.textContent = "MAPA INDISPONÍVEL";
+      showMapError(error, null);
     }
   }
 

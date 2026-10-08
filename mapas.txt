@@ -21,6 +21,15 @@ futuros obstaculos. Pinte com cores solidas, sem transparencia ou suavizacao
 de borda, e preserve as dimensoes originais. A mascara e lida na resolucao
 integral para conservar detalhes finos.
 
+Faixas do mapa
+--------------
+Os tres mapas originais sao divididos em 20 faixas horizontais pela ferramenta
+tools/split-maps.ps1. A numeracao dos arquivos em maps/ comeca em 01 na parte
+de baixo e termina em 20 no topo. O jogo carrega primeiro a faixa 01 e busca
+as faixas proximas conforme a canoa avanca. Depois de editar os mapas
+originais, execute `powershell -NoProfile -ExecutionPolicy Bypass -File
+.\tools\split-maps.ps1` no Windows para atualizar as faixas e o manifesto.
+
 Teste atual
 -----------
 O percurso estimado tem 15 km, do canto inferior esquerdo ao superior direito.
