@@ -12,8 +12,7 @@
 
   const routeLengthMeters = 15000;
   const maximumSpeedKmh = 100;
-  const accelerationKmhPerSecond = 36;
-  const brakingKmhPerSecond = 55;
+  const speedStepKmh = 20;
   const turnRate = 1.8;
   const pressedKeys = new Set();
   const boat = { x: 0, y: 0, heading: -Math.PI / 4 };
@@ -33,6 +32,13 @@
 
   function updateSpeed() {
     speedLabel.textContent = `${Math.round(speedKmh)} km/h`;
+  }
+
+  function changeSpeedLevel(amount) {
+    const currentLevel = Math.round(speedKmh / speedStepKmh);
+    const maximumLevel = maximumSpeedKmh / speedStepKmh;
+    speedKmh = Math.max(0, Math.min(maximumLevel, currentLevel + amount)) * speedStepKmh;
+    updateSpeed();
   }
 
   function isGreenStart(r, g, b) {
@@ -266,14 +272,9 @@
   }
 
   function moveBoat(delta) {
-    if (pressedKeys.has("ArrowLeft")) boat.heading -= turnRate * delta;
-    if (pressedKeys.has("ArrowRight")) boat.heading += turnRate * delta;
-
-    if (pressedKeys.has("ArrowDown")) {
-      speedKmh = Math.max(0, speedKmh - brakingKmhPerSecond * delta);
-    } else if (pressedKeys.has("ArrowUp")) {
-      speedKmh = Math.min(maximumSpeedKmh, speedKmh + accelerationKmhPerSecond * delta);
-    }
+    const steeringRate = speedKmh > speedStepKmh * 2 ? turnRate * 0.25 : turnRate;
+    if (pressedKeys.has("ArrowLeft")) boat.heading -= steeringRate * delta;
+    if (pressedKeys.has("ArrowRight")) boat.heading += steeringRate * delta;
 
     if (speedKmh === 0) {
       return;
@@ -319,6 +320,51 @@
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#fff5e8";
     ctx.stroke();
+  }
+
+  function getBoatScreenPosition() {
+    const pixelRatio = window.devicePixelRatio || 1;
+    const width = canvas.width / pixelRatio;
+    const height = canvas.height / pixelRatio;
+    const zoom = getZoom(width);
+    const boatScreenY = height * 0.68;
+    const renderedMapWidth = mapWidth * zoom;
+    const renderedMapHeight = mapHeight * zoom;
+    const requestedOffsetX = width / 2 - boat.x * zoom;
+    const requestedOffsetY = boatScreenY - boat.y * zoom;
+    const offsetX = renderedMapWidth <= width
+      ? (width - renderedMapWidth) / 2
+      : requestedOffsetX;
+    const offsetY = renderedMapHeight <= height
+      ? (height - renderedMapHeight) / 2
+      : requestedOffsetY;
+    return {
+      x: offsetX + boat.x * zoom,
+      y: offsetY + boat.y * zoom
+    };
+  }
+
+  function handleCanvasPointer(event) {
+    if (gameState !== "playing" || mapWidth === 0) return;
+
+    const bounds = canvas.getBoundingClientRect();
+    const boatPosition = getBoatScreenPosition();
+    const dx = event.clientX - bounds.left - boatPosition.x;
+    const dy = event.clientY - bounds.top - boatPosition.y;
+    const forward = dx * Math.cos(boat.heading) + dy * Math.sin(boat.heading);
+    const lateral = -dx * Math.sin(boat.heading) + dy * Math.cos(boat.heading);
+
+    if (forward > Math.abs(lateral)) {
+      changeSpeedLevel(1);
+    } else if (-forward > Math.abs(lateral)) {
+      changeSpeedLevel(-1);
+    } else if (Math.abs(lateral) > 8) {
+      const tightTurn = speedKmh <= speedStepKmh * 2;
+      const turnAngle = tightTurn ? Math.PI / 4 : Math.PI / 15;
+      boat.heading += Math.sign(lateral) * turnAngle;
+    }
+
+    event.preventDefault();
   }
 
   function render() {
@@ -389,9 +435,14 @@
   window.addEventListener("keydown", event => {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
       event.preventDefault();
-      if (gameState === "playing") {
-        pressedKeys.add(event.key);
-        updateSpeed();
+      if (gameState === "playing" && !event.repeat) {
+        if (event.key === "ArrowUp") {
+          changeSpeedLevel(1);
+        } else if (event.key === "ArrowDown") {
+          changeSpeedLevel(-1);
+        } else {
+          pressedKeys.add(event.key);
+        }
       }
     }
   });
@@ -402,6 +453,7 @@
     pressedKeys.clear();
     updateSpeed();
   });
+  canvas.addEventListener("pointerdown", handleCanvasPointer);
   window.addEventListener("resize", resizeCanvas);
 
   async function initialize() {

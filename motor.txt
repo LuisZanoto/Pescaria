@@ -1,7 +1,9 @@
 tipo: 2 tempos
 potencia: 5 HP
 direcao: sem marcha a re; avanca e permite curvas fechadas com diametro minimo de 10 metros. No retorno, os controles esquerda/direita se invertem.
-velocidades: 5 niveis de rotacao/ruido (nao sao marchas mecanicas)
+velocidades: 5 niveis de rotacao/ruido (nao sao marchas mecanicas), cada nivel aumenta em 20km/h.
+Controles no celular: toque a frente da seta do barco para acelerar um nivel (20 km/h) por toque, ate o nivel 5 (100 km/h); toque atras para reduzir um nivel por toque ate parar, sem marcha a re. Toques laterais mudam a direcao; curvas fechadas ficam limitadas aos niveis 1 e 2. Toques a noroeste, nordeste, leste ou oeste tambem direcionam o barco conforme o lado tocado.
+Controles no PC: seta para cima aumenta um nivel por pressionamento; seta para baixo reduz um nivel por pressionamento ate zero; setas esquerda e direita viram sem alterar a velocidade. Curvas fechadas ficam limitadas aos niveis 1 e 2.
 RPM minimo: 800
 RPM maximo: 9000
 Pontos de reabastecimento somente no inicio do trajeto. 
