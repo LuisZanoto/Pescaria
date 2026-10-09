@@ -7,7 +7,7 @@
   <meta name="description" content="Teste de navegação no rio com controle por setas.">
   <title>Teste de navegação | Pescaria</title>
   <link rel="stylesheet" href="css/game.css">
-  <script src="js/game.js?v=4" defer></script>
+  <script src="js/game.js?v=5" defer></script>
 </head>
 <body>
   <main class="game-shell">
@@ -18,9 +18,35 @@
       </div>
       <div class="topbar-actions">
         <p class="speed-readout">VELOCIDADE <strong id="speed">0 km/h</strong></p>
-        <button id="settings-button" class="secondary-button" type="button" aria-expanded="false" aria-controls="settings-panel">Configurações</button>
+        <button id="bait-button" class="secondary-button" type="button" aria-expanded="false" aria-controls="bait-panel">Armar isca</button>
+        <button id="settings-button" class="secondary-button" type="button" aria-expanded="false" aria-controls="settings-panel">Salvar_Dados</button>
       </div>
     </header>
+
+    <aside id="bait-panel" class="settings-panel bait-panel" hidden aria-live="polite">
+      <div class="settings-header">
+        <div>
+          <p class="eyebrow">ISCA · ESTOQUE</p>
+          <h2>Comprar ou armar isca</h2>
+        </div>
+        <button id="close-bait" class="ghost-button" type="button" aria-label="Fechar painel de iscas">Fechar</button>
+      </div>
+      <p id="bait-inventory" class="warning-message"></p>
+      <div class="bait-controls">
+        <label for="bait-type">Tipo de isca</label>
+        <select id="bait-type">
+          <option value="tuvira">Tuvira · R$ 5,00</option>
+          <option value="piau">Piau · R$ 10,00</option>
+        </select>
+        <label for="bait-quantity">Quantidade</label>
+        <input id="bait-quantity" type="number" min="1" step="1" value="1">
+        <div class="settings-actions">
+          <button id="buy-bait" class="secondary-button" type="button">Comprar iscas selecionadas</button>
+          <button id="arm-bait" class="primary-button" type="button">Armar isca selecionada</button>
+        </div>
+      </div>
+      <p id="bait-status" class="save-status" role="status"></p>
+    </aside>
 
     <aside id="settings-panel" class="settings-panel" hidden aria-live="polite">
       <div class="settings-header">
@@ -45,6 +71,12 @@
 
     <section class="river-view" aria-label="Área de navegação">
       <canvas id="river" aria-label="Mapa do rio com a posição da canoa"></canvas>
+      <aside id="fuel-alert" class="fuel-alert" hidden aria-live="polite">
+        <p id="fuel-message"></p>
+        <label for="fuel-quantity">Litros para comprar</label>
+        <input id="fuel-quantity" type="number" min="1" step="1" value="1">
+        <button id="buy-fuel" class="primary-button" type="button">Comprar gasolina · R$ 6,50/L</button>
+      </aside>
       <section id="overlay" class="overlay" aria-labelledby="overlay-title">
         <div class="dialog">
           <p class="eyebrow">PERCURSO ESTIMADO · 15 KM</p>

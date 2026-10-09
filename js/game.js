@@ -15,6 +15,19 @@
   const restoreProgressButton = document.querySelector("#restore-progress");
   const saveStatus = document.querySelector("#save-status");
   const saveStatsList = document.querySelector("#save-stats");
+  const baitButton = document.querySelector("#bait-button");
+  const baitPanel = document.querySelector("#bait-panel");
+  const closeBaitButton = document.querySelector("#close-bait");
+  const baitTypeInput = document.querySelector("#bait-type");
+  const baitQuantityInput = document.querySelector("#bait-quantity");
+  const buyBaitButton = document.querySelector("#buy-bait");
+  const armBaitButton = document.querySelector("#arm-bait");
+  const baitInventory = document.querySelector("#bait-inventory");
+  const baitStatus = document.querySelector("#bait-status");
+  const fuelAlert = document.querySelector("#fuel-alert");
+  const fuelMessage = document.querySelector("#fuel-message");
+  const fuelQuantityInput = document.querySelector("#fuel-quantity");
+  const buyFuelButton = document.querySelector("#buy-fuel");
   const mapTypes = ["Foto01", "Foto02", "Foto03"];
   const STORAGE_KEY = "pescariaGameSave";
 
@@ -22,6 +35,8 @@
   const maximumSpeedKmh = 100;
   const speedStepKmh = 20;
   const turnRate = 1.8;
+  const fuelPricePerLiter = 6.5;
+  const baitPrices = { tuvira: 5, piau: 10 };
   const pressedKeys = new Set();
   const boat = { x: 0, y: 0, heading: -Math.PI / 4 };
 
@@ -42,18 +57,20 @@
 
   function getDefaultProgress() {
     return {
-      versaoDados: 3,
+      versaoDados: 4,
       dinheiroGasto: 450.5,
-      tempoJogadoMinutos: 420,
-      tuvirasPiaus: 25,
-      anzoisArmados: 10,
+      tempoJogadoMinutos: 0,
+      tuviras: 20,
+      piaus: 5,
+      anzoisArmados: 0,
       iscaPega: 0,
-      peixePegoKg: 10,
-      peixeVendidoKg: 5,
+      peixePegoKg: 0,
+      peixeVendidoKg: 0,
       valorPeixePorKg: 30,
-      gasolinaAtualLitros: 4,
+      gasolinaAtualLitros: 10,
+      iscasArmadas: [],
       estatisticas: {
-        tempoJogadoMinutos: 420,
+        tempoJogadoMinutos: 0,
         saldoPescaria: 0
       }
     };
@@ -72,9 +89,17 @@
 
     mergedProgress.dinheiroGasto = Number(mergedProgress.dinheiroGasto) || 0;
     mergedProgress.tempoJogadoMinutos = Number(mergedProgress.tempoJogadoMinutos) || 0;
-    mergedProgress.tuvirasPiaus = Number(
-      candidate.tuvirasPiaus ?? candidate.Tuviras_Piaus ?? candidate.iscasAtuais?.tuvira ?? defaultProgress.tuvirasPiaus
-    ) || 0;
+    if (candidate.tuviras !== undefined || candidate.piaus !== undefined) {
+      mergedProgress.tuviras = Math.max(0, Number(candidate.tuviras ?? defaultProgress.tuviras) || 0);
+      mergedProgress.piaus = Math.max(0, Number(candidate.piaus ?? defaultProgress.piaus) || 0);
+    } else if (candidate.tuvirasPiaus !== undefined || candidate.Tuviras_Piaus !== undefined ||
+               candidate.iscasAtuais?.tuvira !== undefined) {
+      mergedProgress.tuviras = Math.max(
+        0,
+        Number(candidate.tuvirasPiaus ?? candidate.Tuviras_Piaus ?? candidate.iscasAtuais?.tuvira) || 0
+      );
+      mergedProgress.piaus = Math.max(0, Number(candidate.iscasAtuais?.piau) || 0);
+    }
     mergedProgress.anzoisArmados = Number(mergedProgress.anzoisArmados) || 0;
     mergedProgress.iscaPega = Number(mergedProgress.iscaPega) || 0;
     mergedProgress.peixePegoKg = Number(mergedProgress.peixePegoKg) || 0;
@@ -85,6 +110,14 @@
     mergedProgress.gasolinaAtualLitros = Number(
       candidate.gasolinaAtualLitros ?? candidate.gasolinaAtual ?? defaultProgress.gasolinaAtualLitros
     ) || 0;
+    mergedProgress.iscasArmadas = Array.isArray(candidate.iscasArmadas)
+      ? candidate.iscasArmadas
+        .filter(bait => bait && Number.isFinite(Number(bait.x)) && Number.isFinite(Number(bait.y)))
+        .map(bait => ({ x: Number(bait.x), y: Number(bait.y), tipo: bait.tipo === "piau" ? "piau" : "tuvira" }))
+      : [];
+    if (Array.isArray(candidate.iscasArmadas)) {
+      mergedProgress.anzoisArmados = mergedProgress.iscasArmadas.length;
+    }
     mergedProgress.estatisticas.tempoJogadoMinutos = Number(mergedProgress.estatisticas.tempoJogadoMinutos) || 0;
     mergedProgress.estatisticas.saldoPescaria = calculateFishingBalance(mergedProgress);
 
@@ -108,7 +141,8 @@
     const entries = [
       { label: "Dinheiro gasto", value: formatCurrency(currentProgress.dinheiroGasto) },
       { label: "Tempo jogado", value: `${(Number(currentProgress.tempoJogadoMinutos) || 0).toFixed(1)} min` },
-      { label: "Tuviras e piaus", value: `${currentProgress.tuvirasPiaus} itens` },
+      { label: "Tuviras", value: `${currentProgress.tuviras} itens` },
+      { label: "Piaus", value: `${currentProgress.piaus} itens` },
       { label: "Anzóis armados", value: `${currentProgress.anzoisArmados}` },
       { label: "Iscas pegas", value: `${currentProgress.iscaPega}` },
       { label: "Peixe pego", value: `${(Number(currentProgress.peixePegoKg) || 0).toFixed(1)} kg` },
@@ -191,11 +225,106 @@
     renderSaveStats();
   }
 
+  function updateBaitPanel(updateMessage = true) {
+    if (!gameProgress) return;
+    baitInventory.textContent = `Estoque: ${gameProgress.tuviras} tuviras e ${gameProgress.piaus} piaus.`;
+    const canArm = gameState === "playing" && speedKmh === 0 && isAtRiverBank();
+    armBaitButton.disabled = !canArm;
+    if (!updateMessage) return;
+    if (canArm) {
+      baitStatus.textContent = "O barco está parado na margem. Você pode armar uma isca.";
+    } else if (gameState !== "playing") {
+      baitStatus.textContent = "Inicie a navegação para armar uma isca na margem.";
+    } else if (speedKmh !== 0) {
+      baitStatus.textContent = "Pare o barco para armar uma isca.";
+    } else {
+      baitStatus.textContent = "Aproxime o barco de uma margem para armar uma isca.";
+    }
+  }
+
+  function updateFuelAlert() {
+    if (!gameProgress || !fuelAlert) return;
+    const fuel = Math.max(0, Number(gameProgress.gasolinaAtualLitros) || 0);
+    fuelAlert.hidden = fuel > 2;
+    fuelMessage.textContent = fuel <= 0
+      ? "A gasolina acabou. O barco está parado; compre combustível para continuar."
+      : `Gasolina acabando: restam ${fuel.toFixed(1)} L. O consumo é 0,2 L/km subindo o rio e 0,1 L/km descendo.`;
+  }
+
+  function getSelectedQuantity(input) {
+    const quantity = Number(input.value);
+    return Number.isInteger(quantity) && quantity > 0 ? quantity : 0;
+  }
+
+  function toggleBaitPanel(forceOpen) {
+    const nextState = typeof forceOpen === "boolean" ? forceOpen : baitPanel.hidden;
+    baitPanel.hidden = !nextState;
+    baitButton.setAttribute("aria-expanded", String(nextState));
+    if (nextState) updateBaitPanel();
+  }
+
+  function buySelectedBait() {
+    const type = baitTypeInput.value;
+    const quantity = getSelectedQuantity(baitQuantityInput);
+    if (!quantity) {
+      baitStatus.textContent = "Informe uma quantidade inteira maior que zero.";
+      return;
+    }
+
+    gameProgress[type === "piau" ? "piaus" : "tuviras"] += quantity;
+    gameProgress.dinheiroGasto += quantity * baitPrices[type];
+    renderSaveStats();
+    updateBaitPanel();
+    saveProgress();
+    baitStatus.textContent = `${quantity} ${type === "piau" ? "piau(s)" : "tuvira(s)"} comprado(s) por ${formatCurrency(quantity * baitPrices[type])}.`;
+  }
+
+  function armSelectedBait() {
+    if (gameState !== "playing" || speedKmh !== 0 || !isAtRiverBank()) {
+      updateBaitPanel();
+      return;
+    }
+    const type = baitTypeInput.value;
+    const stockKey = type === "piau" ? "piaus" : "tuviras";
+    if (gameProgress[stockKey] < 1) {
+      baitStatus.textContent = `Sem ${type === "piau" ? "piaus" : "tuviras"} no estoque. Compre iscas para continuar.`;
+      return;
+    }
+
+    gameProgress[stockKey]--;
+    gameProgress.iscasArmadas.push({ x: boat.x, y: boat.y, tipo: type });
+    gameProgress.anzoisArmados = gameProgress.iscasArmadas.length;
+    renderSaveStats();
+    render();
+    saveProgress();
+    updateBaitPanel();
+    baitStatus.textContent = "Isca armada na margem. A bandeirinha amarela marca o local.";
+  }
+
+  function buyFuel() {
+    const quantity = getSelectedQuantity(fuelQuantityInput);
+    if (!quantity) {
+      fuelMessage.textContent = "Informe uma quantidade inteira de litros maior que zero.";
+      return;
+    }
+    gameProgress.gasolinaAtualLitros += quantity;
+    gameProgress.dinheiroGasto += quantity * fuelPricePerLiter;
+    renderSaveStats();
+    updateFuelAlert();
+    saveProgress();
+  }
+
   function updateSpeed() {
     speedLabel.textContent = `${Math.round(speedKmh)} km/h`;
   }
 
   function changeSpeedLevel(amount) {
+    if (amount > 0 && gameProgress && gameProgress.gasolinaAtualLitros <= 0) {
+      speedKmh = 0;
+      updateSpeed();
+      updateFuelAlert();
+      return;
+    }
     const currentLevel = Math.round(speedKmh / speedStepKmh);
     const maximumLevel = maximumSpeedKmh / speedStepKmh;
     speedKmh = Math.max(0, Math.min(maximumLevel, currentLevel + amount)) * speedStepKmh;
@@ -400,6 +529,21 @@
     return strip.navigationMask[(maskY - strip.top) * mapWidth + maskX] === 1;
   }
 
+  function isAtRiverBank() {
+    if (!mapWidth || !mapHeight || isNavigableAt(boat.x, boat.y) !== true) return false;
+    const distance = 2.5;
+    for (let direction = 0; direction < 8; direction++) {
+      const angle = direction * Math.PI / 4;
+      if (isNavigableAt(
+        boat.x + Math.cos(angle) * distance,
+        boat.y + Math.sin(angle) * distance
+      ) === false) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function getStripIndex(y) {
     const mapY = Math.max(0, Math.min(mapHeight - 1, Math.round(y)));
     return stripCount - 1 - Math.floor(mapY * stripCount / mapHeight);
@@ -442,7 +586,17 @@
     }
 
     const pixelsPerMeter = mapHeight / routeLengthMeters;
-    const distance = speedKmh / 3.6 * pixelsPerMeter * delta;
+    const requestedDistance = speedKmh / 3.6 * pixelsPerMeter * delta;
+    const movingUpstream = Math.sin(boat.heading) <= 0;
+    const litersPerKm = movingUpstream ? 0.2 : 0.1;
+    const fuelAvailable = Math.max(0, Number(gameProgress.gasolinaAtualLitros) || 0);
+    const fuelLimitedDistance = fuelAvailable * 1000 * pixelsPerMeter / litersPerKm;
+    const distance = Math.min(requestedDistance, fuelLimitedDistance);
+    if (distance <= 0) {
+      speedKmh = 0;
+      updateFuelAlert();
+      return;
+    }
     const nextX = boat.x + Math.cos(boat.heading) * distance;
     const nextY = boat.y + Math.sin(boat.heading) * distance;
 
@@ -462,6 +616,10 @@
 
     boat.x = nextX;
     boat.y = nextY;
+    const distanceKm = distance / pixelsPerMeter / 1000;
+    gameProgress.gasolinaAtualLitros = Math.max(0, fuelAvailable - distanceKm * litersPerKm);
+    if (distance < requestedDistance) speedKmh = 0;
+    updateFuelAlert();
     requestNearbyStrips();
   }
 
@@ -481,6 +639,29 @@
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#fff5e8";
     ctx.stroke();
+  }
+
+  function drawArmedBaits() {
+    const baits = gameProgress?.iscasArmadas || [];
+    const zoom = getZoom(canvas.width / (window.devicePixelRatio || 1));
+    const size = 9 / zoom;
+    ctx.save();
+    ctx.lineWidth = 1.5 / zoom;
+    for (const bait of baits) {
+      ctx.beginPath();
+      ctx.moveTo(bait.x, bait.y);
+      ctx.lineTo(bait.x, bait.y - size * 2);
+      ctx.strokeStyle = "#f3e8a0";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bait.x, bait.y - size * 2);
+      ctx.lineTo(bait.x + size, bait.y - size * 1.55);
+      ctx.lineTo(bait.x, bait.y - size * 1.1);
+      ctx.closePath();
+      ctx.fillStyle = "#ffdf32";
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function getBoatScreenPosition() {
@@ -562,6 +743,7 @@
       if (stripScreenTop + strip.height * zoom < 0 || stripScreenTop > height) continue;
       ctx.drawImage(strip.image, 0, strip.top);
     }
+    drawArmedBaits();
     drawBoat(
       offsetX + boat.x * zoom,
       offsetY + boat.y * zoom,
@@ -579,6 +761,8 @@
       gameProgress = normalizeProgress(getDefaultProgress());
     }
     updateSpeed();
+    updateFuelAlert();
+    updateBaitPanel();
     requestNearbyStrips();
     canvas.focus({ preventScroll: true });
   }
@@ -588,6 +772,7 @@
       const elapsed = Math.max(0, (time - previousFrameTime) / 1000);
       moveBoat(Math.min(elapsed, 0.05));
       updateProgressFromGame(Math.min(elapsed, 0.05));
+      updateBaitPanel(false);
       if (time - lastAutoSaveTimestamp >= 15000) {
         saveProgress();
         lastAutoSaveTimestamp = time;
@@ -604,6 +789,7 @@
   startButton.addEventListener("click", startNavigation);
   window.addEventListener("keydown", event => {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
       event.preventDefault();
       if (gameState === "playing" && !event.repeat) {
         if (event.key === "ArrowUp") {
@@ -628,6 +814,11 @@
   if (settingsButton) {
     settingsButton.addEventListener("click", () => toggleSettingsPanel());
   }
+  baitButton.addEventListener("click", () => toggleBaitPanel());
+  closeBaitButton.addEventListener("click", () => toggleBaitPanel(false));
+  buyBaitButton.addEventListener("click", buySelectedBait);
+  armBaitButton.addEventListener("click", armSelectedBait);
+  buyFuelButton.addEventListener("click", buyFuel);
   if (closeSettingsButton) {
     closeSettingsButton.addEventListener("click", () => toggleSettingsPanel(false));
   }
@@ -648,6 +839,8 @@
   async function initialize() {
     loadProgress();
     renderSaveStats();
+    updateFuelAlert();
+    updateBaitPanel();
     if (saveStatus) {
       const hasProgress = Boolean(gameProgress);
       saveStatus.textContent = hasProgress && localStorage.getItem(STORAGE_KEY)
