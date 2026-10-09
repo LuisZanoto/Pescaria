@@ -1,0 +1,78 @@
+No jogo de pescaria é tipo browser, ele carrega algumas telas e controla um barco navegando em mapas.
+Tem a opção de guardar configurações no celular de quem acessa o site do jogo 
+( esta opção deve ficar na parte superior junto com algumas informações, no campo salvar ),
+ como por exemplo algumas opções do jogo, como Saldo atual em dinheiro,
+ tempo jogado, iscas atuais, anzois armados, peixes pegos (kg), peixes vendidos (kg), etc. 
+Fazer isso sem criar contas e sem login.
+ Simplesmente ele pressiona o botão de configurações , abre uma janela com os itens 
+que ele for conquistando e salva no proprio celular como algum arquivo tipo Json.
+ Quando ele retorna ao jogo, pode recuperar as informações salvas no celular dele. 
+ Alertar para não usar modo anonimo ou outro navegador para não perder dados.
+ 
+ // Exemplo Objeto com os dados do jogo
+let dadosDoJogo = {
+    dinheiro Gasto: R$450.50,
+    Tuviras_Piaus : 25,
+    anzois armados: 10,
+	Isca pega : 0,
+	peixe pego por kg : 10kg,
+	peixe vendido : 5kg,
+	valor do peixe por kg : R$30.00,	
+    gasolina atual : 4 litros,
+    estatisticas: {
+        tempoJogadoMinutos: 420,
+		Saldo pescaria : R$( valor do peixe vendido * peso peixe ) - ( dinheiro  Gasto),
+    }
+};
+
+function salvarProgresso() {
+    // JSON.stringify transforma o objeto em uma string JSON
+    localStorage.setItem("fishingGameSave", JSON.stringify(dadosDoJogo));
+    console.log("Progresso salvo com sucesso no celular!");
+}
+
+//Exemplo para recuperar os dados : 
+
+let dadosDoJogo = {};
+
+function carregarProgresso() {
+    let saveSalvo = localStorage.getItem("fishingGameSave");
+    
+    if (saveSalvo) {
+        // Converte a string JSON de volta para um objeto JavaScript
+        dadosDoJogo = JSON.parse(saveSalvo);
+        console.log("Save carregado com sucesso!");
+    } else {
+        // Valores iniciais caso seja o primeiro acesso
+        dadosDoJogo = {
+			dinheiro Gasto: R$450.50,
+			Tuviras_Piaus : 25,
+			anzois armados: 10,
+			Isca pega : 0,
+			peixe pego por kg : 10kg,
+			peixe vendido : 5kg,
+			valor do peixe (kg) : R$30.00,
+			gasolina atual : 4 litros,
+			estatisticas: {
+				tempoJogadoMinutos: 420,
+				Saldo pescaria : R$( valor do peixe vendido * peso peixe ) - ( dinheiro  Gasto),
+			}
+        };
+        console.log("Nenhum save encontrado. Iniciando novo jogo.");
+    }
+}
+
+// Chame essa função assim que o jogo carregar
+carregarProgresso();
+
+
+Observações :
+- dar a opção de recuperar dados do jogo.
+- atualizar este arquivo conforme o jogo cresce e aumenta as possibilidades e opções.
+- manter estatísticas, saldos e opções de salvamento ocultos enquanto o painel de configurações estiver fechado, para preservar espaço na tela do jogo.
+- exibir as estatísticas e os saldos somente quando o jogador pressionar o botão "Configurações"; oferecer nesse painel as ações de salvar e recuperar o progresso.
+- o painel deve iniciar fechado e poder ser fechado novamente pelo botão "Fechar".
+
+
+
+ 

@@ -7,7 +7,7 @@
   <meta name="description" content="Teste de navegação no rio com controle por setas.">
   <title>Teste de navegação | Pescaria</title>
   <link rel="stylesheet" href="css/game.css">
-  <script src="js/game.js" defer></script>
+  <script src="js/game.js?v=4" defer></script>
 </head>
 <body>
   <main class="game-shell">
@@ -16,8 +16,32 @@
         <p class="eyebrow">PESCARIA · TESTE DE NAVEGAÇÃO</p>
         <h1>Rio <span>Mogi</span></h1>
       </div>
-      <p class="speed-readout">VELOCIDADE <strong id="speed">0 km/h</strong></p>
+      <div class="topbar-actions">
+        <p class="speed-readout">VELOCIDADE <strong id="speed">0 km/h</strong></p>
+        <button id="settings-button" class="secondary-button" type="button" aria-expanded="false" aria-controls="settings-panel">Configurações</button>
+      </div>
     </header>
+
+    <aside id="settings-panel" class="settings-panel" hidden aria-live="polite">
+      <div class="settings-header">
+        <div>
+          <p class="eyebrow">SALVAR · RECUPERAR</p>
+          <h2>Progresso do jogo</h2>
+        </div>
+        <button id="close-settings" class="ghost-button" type="button" aria-label="Fechar configurações">Fechar</button>
+      </div>
+
+      <p class="warning-message">⚠️ Não use modo anônimo ou outro navegador para não perder os dados salvos no celular.</p>
+
+      <ul id="save-stats" class="save-stats" aria-label="Estatísticas do jogo salvas"></ul>
+
+      <div class="settings-actions">
+        <button id="save-progress" class="primary-button" type="button">Salvar no celular</button>
+        <button id="restore-progress" class="secondary-button" type="button">Recuperar dados</button>
+      </div>
+
+      <p id="save-status" class="save-status">Nenhum dado salvo ainda.</p>
+    </aside>
 
     <section class="river-view" aria-label="Área de navegação">
       <canvas id="river" aria-label="Mapa do rio com a posição da canoa"></canvas>

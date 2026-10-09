@@ -8,7 +8,15 @@
   const overlayCopy = document.querySelector("#overlay-copy");
   const startButton = document.querySelector("#start-button");
   const speedLabel = document.querySelector("#speed");
+  const settingsButton = document.querySelector("#settings-button");
+  const settingsPanel = document.querySelector("#settings-panel");
+  const closeSettingsButton = document.querySelector("#close-settings");
+  const saveProgressButton = document.querySelector("#save-progress");
+  const restoreProgressButton = document.querySelector("#restore-progress");
+  const saveStatus = document.querySelector("#save-status");
+  const saveStatsList = document.querySelector("#save-stats");
   const mapTypes = ["Foto01", "Foto02", "Foto03"];
+  const STORAGE_KEY = "pescariaGameSave";
 
   const routeLengthMeters = 15000;
   const maximumSpeedKmh = 100;
@@ -29,6 +37,159 @@
   let speedKmh = 0;
   let previousFrameTime = 0;
   let gameState = "ready";
+  let gameProgress = null;
+  let lastAutoSaveTimestamp = 0;
+
+  function getDefaultProgress() {
+    return {
+      versaoDados: 3,
+      dinheiroGasto: 450.5,
+      tempoJogadoMinutos: 420,
+      tuvirasPiaus: 25,
+      anzoisArmados: 10,
+      iscaPega: 0,
+      peixePegoKg: 10,
+      peixeVendidoKg: 5,
+      valorPeixePorKg: 30,
+      gasolinaAtualLitros: 4,
+      estatisticas: {
+        tempoJogadoMinutos: 420,
+        saldoPescaria: 0
+      }
+    };
+  }
+
+  function normalizeProgress(rawProgress) {
+    const defaultProgress = getDefaultProgress();
+    const candidate = rawProgress && typeof rawProgress === "object" ? rawProgress : {};
+    const isLegacySave = !(Number(candidate.versaoDados) >= defaultProgress.versaoDados);
+    const mergedProgress = {
+      ...defaultProgress,
+      ...candidate,
+      versaoDados: defaultProgress.versaoDados,
+      estatisticas: { ...defaultProgress.estatisticas, ...(candidate.estatisticas || {}) }
+    };
+
+    mergedProgress.dinheiroGasto = Number(mergedProgress.dinheiroGasto) || 0;
+    mergedProgress.tempoJogadoMinutos = Number(mergedProgress.tempoJogadoMinutos) || 0;
+    mergedProgress.tuvirasPiaus = Number(
+      candidate.tuvirasPiaus ?? candidate.Tuviras_Piaus ?? candidate.iscasAtuais?.tuvira ?? defaultProgress.tuvirasPiaus
+    ) || 0;
+    mergedProgress.anzoisArmados = Number(mergedProgress.anzoisArmados) || 0;
+    mergedProgress.iscaPega = Number(mergedProgress.iscaPega) || 0;
+    mergedProgress.peixePegoKg = Number(mergedProgress.peixePegoKg) || 0;
+    mergedProgress.peixeVendidoKg = Number(mergedProgress.peixeVendidoKg) || 0;
+    mergedProgress.valorPeixePorKg = isLegacySave
+      ? defaultProgress.valorPeixePorKg
+      : Number(mergedProgress.valorPeixePorKg) || 0;
+    mergedProgress.gasolinaAtualLitros = Number(
+      candidate.gasolinaAtualLitros ?? candidate.gasolinaAtual ?? defaultProgress.gasolinaAtualLitros
+    ) || 0;
+    mergedProgress.estatisticas.tempoJogadoMinutos = Number(mergedProgress.estatisticas.tempoJogadoMinutos) || 0;
+    mergedProgress.estatisticas.saldoPescaria = calculateFishingBalance(mergedProgress);
+
+    return mergedProgress;
+  }
+
+  function calculateFishingBalance(progress) {
+    const expenses = Number(progress.dinheiroGasto) || 0;
+    const revenue = (Number(progress.peixeVendidoKg) || 0) * (Number(progress.valorPeixePorKg) || 0);
+    return revenue - expenses;
+  }
+
+  function formatCurrency(value) {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0);
+  }
+
+  function renderSaveStats() {
+    if (!saveStatsList) return;
+
+    const currentProgress = normalizeProgress(gameProgress);
+    const entries = [
+      { label: "Dinheiro gasto", value: formatCurrency(currentProgress.dinheiroGasto) },
+      { label: "Tempo jogado", value: `${(Number(currentProgress.tempoJogadoMinutos) || 0).toFixed(1)} min` },
+      { label: "Tuviras e piaus", value: `${currentProgress.tuvirasPiaus} itens` },
+      { label: "Anzóis armados", value: `${currentProgress.anzoisArmados}` },
+      { label: "Iscas pegas", value: `${currentProgress.iscaPega}` },
+      { label: "Peixe pego", value: `${(Number(currentProgress.peixePegoKg) || 0).toFixed(1)} kg` },
+      { label: "Peixe vendido", value: `${(Number(currentProgress.peixeVendidoKg) || 0).toFixed(1)} kg` },
+      { label: "Valor do peixe", value: formatCurrency(currentProgress.valorPeixePorKg) },
+      { label: "Gasolina atual", value: `${(Number(currentProgress.gasolinaAtualLitros) || 0).toFixed(1)} L` },
+      { label: "Saldo da pescaria", value: formatCurrency(currentProgress.estatisticas.saldoPescaria) }
+    ];
+
+    saveStatsList.innerHTML = entries.map(({ label, value }) => `
+      <li><span>${label}</span><strong>${value}</strong></li>
+    `).join("");
+  }
+
+  function loadProgress() {
+    try {
+      const savedProgress = localStorage.getItem(STORAGE_KEY);
+      if (!savedProgress) {
+        gameProgress = normalizeProgress(getDefaultProgress());
+        return false;
+      }
+      gameProgress = normalizeProgress(JSON.parse(savedProgress));
+      return true;
+    } catch (error) {
+      console.error("Não foi possível recuperar o progresso salvo.", error);
+      gameProgress = normalizeProgress(getDefaultProgress());
+      return false;
+    }
+  }
+
+  function saveProgress() {
+    try {
+      const progressToSave = normalizeProgress(gameProgress);
+      progressToSave.estatisticas.tempoJogadoMinutos = Number(progressToSave.tempoJogadoMinutos) || 0;
+      progressToSave.estatisticas.saldoPescaria = calculateFishingBalance(progressToSave);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(progressToSave));
+      gameProgress = progressToSave;
+      renderSaveStats();
+      if (saveStatus) {
+        saveStatus.textContent = `Dados salvos em ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`;
+      }
+      return true;
+    } catch (error) {
+      console.error("Não foi possível salvar o progresso do jogo.", error);
+      if (saveStatus) {
+        saveStatus.textContent = "Não foi possível salvar no armazenamento do navegador.";
+      }
+      return false;
+    }
+  }
+
+  function restoreProgress() {
+    const restored = loadProgress();
+    renderSaveStats();
+    if (saveStatus) {
+      saveStatus.textContent = restored
+        ? "Dados recuperados com sucesso."
+        : "Nenhum dado salvo encontrado; iniciou um novo progresso.";
+    }
+    return restored;
+  }
+
+  function toggleSettingsPanel(forceOpen) {
+    if (!settingsPanel) return;
+    const nextState = typeof forceOpen === "boolean" ? forceOpen : settingsPanel.hidden;
+    settingsPanel.hidden = !nextState;
+    if (settingsButton) {
+      settingsButton.setAttribute("aria-expanded", String(nextState));
+    }
+  }
+
+  function updateProgressFromGame(timeDeltaSeconds) {
+    if (!gameProgress) {
+      gameProgress = normalizeProgress(getDefaultProgress());
+    }
+
+    gameProgress.tempoJogadoMinutos = Number(gameProgress.tempoJogadoMinutos || 0) + timeDeltaSeconds / 60;
+    gameProgress.estatisticas.tempoJogadoMinutos = Number(gameProgress.tempoJogadoMinutos);
+    gameProgress.estatisticas.saldoPescaria = calculateFishingBalance(gameProgress);
+    renderSaveStats();
+  }
 
   function updateSpeed() {
     speedLabel.textContent = `${Math.round(speedKmh)} km/h`;
@@ -413,6 +574,10 @@
     pressedKeys.clear();
     overlay.hidden = true;
     previousFrameTime = performance.now();
+    lastAutoSaveTimestamp = previousFrameTime;
+    if (!gameProgress) {
+      gameProgress = normalizeProgress(getDefaultProgress());
+    }
     updateSpeed();
     requestNearbyStrips();
     canvas.focus({ preventScroll: true });
@@ -422,6 +587,11 @@
     if (gameState === "playing") {
       const elapsed = Math.max(0, (time - previousFrameTime) / 1000);
       moveBoat(Math.min(elapsed, 0.05));
+      updateProgressFromGame(Math.min(elapsed, 0.05));
+      if (time - lastAutoSaveTimestamp >= 15000) {
+        saveProgress();
+        lastAutoSaveTimestamp = time;
+      }
       updateSpeed();
     } else if (gameState === "ready") {
       requestNearbyStrips();
@@ -455,8 +625,36 @@
   });
   canvas.addEventListener("pointerdown", handleCanvasPointer);
   window.addEventListener("resize", resizeCanvas);
+  if (settingsButton) {
+    settingsButton.addEventListener("click", () => toggleSettingsPanel());
+  }
+  if (closeSettingsButton) {
+    closeSettingsButton.addEventListener("click", () => toggleSettingsPanel(false));
+  }
+  if (saveProgressButton) {
+    saveProgressButton.addEventListener("click", () => {
+      saveProgress();
+      toggleSettingsPanel(true);
+    });
+  }
+  if (restoreProgressButton) {
+    restoreProgressButton.addEventListener("click", () => {
+      restoreProgress();
+      toggleSettingsPanel(true);
+    });
+  }
+  window.addEventListener("beforeunload", saveProgress);
 
   async function initialize() {
+    loadProgress();
+    renderSaveStats();
+    if (saveStatus) {
+      const hasProgress = Boolean(gameProgress);
+      saveStatus.textContent = hasProgress && localStorage.getItem(STORAGE_KEY)
+        ? "Dados do celular recuperados automaticamente."
+        : "Nenhum dado salvo ainda. Você pode salvar no celular quando quiser.";
+    }
+
     try {
       const response = await fetch(new URL("maps/manifest.json", document.baseURI));
       if (!response.ok) throw new Error(`Não foi possível carregar a configuração dos mapas (HTTP ${response.status}).`);
